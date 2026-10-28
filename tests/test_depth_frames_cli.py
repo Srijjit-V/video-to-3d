@@ -35,15 +35,18 @@ def test_metric_depth_masks_out_of_range():
     assert np.isnan(metric_depth(disp, 0.5, 0.0, 3.0, 10.0)).all()
 
 
-def test_extract_frames_keeps_requested_count(tmp_path):
+@pytest.mark.parametrize("total,target", [(120, 20), (159, 80)])
+def test_extract_frames_never_exceeds_target(tmp_path, total, target):
+    # 159 frames / target 80 used to keep all 159 (window rounded down to 1),
+    # pushing past the all-pairs matching limit.
     video = tmp_path / "v.mp4"
     vw = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 30, (160, 120))
     rng = np.random.default_rng(0)
-    for _ in range(120):
+    for _ in range(total):
         vw.write(rng.integers(0, 255, (120, 160, 3), dtype=np.uint8))
     vw.release()
-    frames = extract_frames(video, tmp_path / "frames", target=20)
-    assert 18 <= len(frames) <= 22
+    frames = extract_frames(video, tmp_path / "frames", target=target)
+    assert 0.6 * target <= len(frames) <= target
 
 
 def test_write_ply_header_and_size(tmp_path):

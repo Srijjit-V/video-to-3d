@@ -71,7 +71,8 @@ That is a clean synthetic scene; real rooms will be noisier.
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q
+.venv/bin/python -m pytest -q                      # fast unit tests
+VID3D_E2E=1 .venv/bin/python -m pytest -q tests/test_e2e.py   # full pipeline accuracy check, ~3 min
 .venv/bin/python scripts/make_synthetic_room.py   # writes samples/synthetic_room.mp4
 .venv/bin/vid3d process samples/synthetic_room.mp4 --out runs/synthetic
 ```

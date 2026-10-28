@@ -26,14 +26,6 @@ class View:
         return self.R.T @ np.array([0.0, -1.0, 0.0])
 
 
-def project(view: View, X: np.ndarray):
-    """World points -> pixel coords and camera depth."""
-    Xc = X @ view.R.T + view.t
-    z = Xc[:, 2]
-    uv = (Xc @ view.K.T)[:, :2] / z[:, None]
-    return uv, z
-
-
 def undistort_radial(xy: np.ndarray, k1: float, iters: int = 6) -> np.ndarray:
     """Invert COLMAP's SIMPLE_RADIAL model on normalized coords: x_d = x_u (1 + k1 r_u^2)."""
     xu = xy.copy()
@@ -206,7 +198,7 @@ def find_floor(points: np.ndarray, cam_centers: np.ndarray, up_hint: np.ndarray)
 def floor_frame(floor: FloorInfo, cam_centers: np.ndarray):
     """Rotation+origin that puts the floor at y=0 with +y up (three.js convention)."""
     y = floor.up
-    # Pick x from the average camera viewing direction projected onto the floor.
+    # Any horizontal x works: walls are lined up with the axes later (floorplan.dominant_yaw).
     ref = np.array([1.0, 0, 0]) if abs(y[0]) < 0.9 else np.array([0, 0, 1.0])
     x = ref - y * np.dot(ref, y)
     x /= np.linalg.norm(x)

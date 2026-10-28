@@ -122,19 +122,16 @@ def run_sfm(frames_dir: Path, work_dir: Path, fov_deg: float = 70.0) -> dict:
         sizes.append([cam.width, cam.height])
         obs.append(np.concatenate([np.asarray(uv).reshape(-1, 2), np.asarray(z).reshape(-1, 1)], 1))
 
-    pts = np.array([p.xyz for p in rec.points3D.values()], np.float32)
-    cols = np.array([p.color for p in rec.points3D.values()], np.uint8)
     offsets = np.cumsum([0] + [len(o) for o in obs])
     np.savez_compressed(
         work_dir / "sfm.npz",
         names=np.array(names), K=np.array(Ks), k1=np.array(k1s), R=np.array(Rs), t=np.array(ts),
         size=np.array(sizes), obs=np.concatenate(obs).astype(np.float32), obs_offsets=offsets,
-        sparse_xyz=pts, sparse_rgb=cols,
     )
     stats = {
         "frames_total": len(list(frames_dir.glob("*.jpg"))),
         "frames_registered": len(names),
-        "sparse_points": len(pts),
+        "sparse_points": rec.num_points3D(),
         "reprojection_error_px": float(rec.compute_mean_reprojection_error()),
     }
     (work_dir / "sfm_stats.json").write_text(json.dumps(stats, indent=2))

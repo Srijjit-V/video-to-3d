@@ -8,6 +8,7 @@ import http.server
 import webbrowser
 from pathlib import Path
 
+# shortcut: needs a source checkout (pip install -e .); ship viewer/ as package data to lift this.
 VIEWER_DIR = Path(__file__).resolve().parents[2] / "viewer"
 
 

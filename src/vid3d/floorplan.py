@@ -14,14 +14,6 @@ CELL = 0.05  # metres per grid cell
 MIN_ROOM_SIDE_M = 1.0  # anything narrower means a wall pair wasn't captured
 
 
-def _grid(xz: np.ndarray, lo: np.ndarray, shape) -> np.ndarray:
-    ij = np.floor((xz - lo) / CELL).astype(int)
-    ok = (ij[:, 0] >= 0) & (ij[:, 1] >= 0) & (ij[:, 0] < shape[1]) & (ij[:, 1] < shape[0])
-    g = np.zeros(shape, np.float32)
-    np.add.at(g, (ij[ok, 1], ij[ok, 0]), 1)
-    return g
-
-
 def wall_points(points: np.ndarray, room_height: float | None) -> np.ndarray:
     top = (room_height - 0.2) if room_height else 2.1
     y = points[:, 1]
@@ -74,14 +66,6 @@ def analyze(points: np.ndarray, room_height: float | None) -> dict:
         # Walls were only seen on one side along some direction: no honest size.
         return {"incomplete": True,
                 "reason": "Opposite walls were not both captured, so the room size can't be measured."}
-    floor = points[np.abs(points[:, 1]) < 0.06][:, [0, 2]]
-    visible_floor = 0.0
-    if len(floor):
-        lo = np.array([x0, z0]) - 0.5
-        shape = (int((z1 - lo[1]) / CELL) + 12, int((x1 - lo[0]) / CELL) + 12)
-        fg = _grid(floor, lo, shape) > 0
-        fg = cv2.morphologyEx(fg.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-        visible_floor = float(fg.sum() * CELL * CELL)
     area = length * width
     return {
         "rect_m": [x0, z0, x1, z1],
@@ -90,7 +74,6 @@ def analyze(points: np.ndarray, room_height: float | None) -> dict:
         "height_m": round(room_height, 3) if room_height else None,
         "area_m2": round(area, 2),
         "area_ft2": round(area * 10.7639, 1),
-        "visible_floor_m2": round(visible_floor, 2),
     }
 
 

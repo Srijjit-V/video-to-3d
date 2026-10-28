@@ -1,6 +1,6 @@
 import numpy as np
 
-from vid3d.geometry import View, backproject, find_floor, fuse, project, undistort_radial
+from vid3d.geometry import View, backproject, find_floor, fuse, undistort_radial
 
 
 def random_rotation(seed):
@@ -34,6 +34,24 @@ def test_ceiling_not_reported_when_not_seen(room):
     cams = np.c_[np.full(10, 2.5), np.full(10, 1.5), np.linspace(1.5, 2.5, 10)]
     f = find_floor(no_ceiling, cams, np.array([0, 1.0, 0]))
     assert f.ceiling_height_raw is None
+
+
+def test_band_of_wall_texture_is_not_a_ceiling(room):
+    # Regression: a stripe of wall detail at one height was once reported as the ceiling.
+    walls = room[room[:, 1] < 2.55]
+    on_wall = np.isclose(walls[:, 0], 0, atol=0.03) | np.isclose(walls[:, 0], 5, atol=0.03) | \
+        np.isclose(walls[:, 2], 0, atol=0.03) | np.isclose(walls[:, 2], 4, atol=0.03)
+    band = walls[on_wall & (np.abs(walls[:, 1] - 2.0) < 0.15)]
+    pts = np.concatenate([walls] + [band] * 8)  # dense horizontal stripe at 2 m
+    cams = np.c_[np.full(10, 2.5), np.full(10, 1.5), np.linspace(1.5, 2.5, 10)]
+    f = find_floor(pts, cams, np.array([0, 1.0, 0]))
+    assert f.ceiling_height_raw is None
+
+
+def project(view: View, X: np.ndarray):
+    """World points -> pixel coords and camera depth (test oracle for backproject)."""
+    Xc = X @ view.R.T + view.t
+    return (Xc @ view.K.T)[:, :2] / Xc[:, 2:3], Xc[:, 2]
 
 
 def test_backproject_then_project_round_trip():

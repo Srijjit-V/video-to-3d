@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
 - `vid3d view`: local three.js viewer with point measuring (m and ft/in), scale calibration, top-down view and floor plan.
 - Synthetic known-size room generator for accuracy checks; unit tests.
 
+### Fixed
+- Short clips no longer keep up to twice the requested frames (which could skip all-pairs matching and stretch the room).
+
+### Removed
+- Unused `visible_floor_m2` output and unused sparse-point export.
+
 ### Security
 - Viewer escapes all text from scene.json before inserting it into the page.
 - Viewer server only answers requests addressed to 127.0.0.1/localhost (blocks DNS rebinding).

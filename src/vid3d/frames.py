@@ -28,7 +28,7 @@ def extract_frames(video_path: Path, out_dir: Path, target: int = 80, max_side: 
     if not cap.isOpened():
         raise RuntimeError(f"Could not open video: {video_path}")
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    window = max(1, total // target) if total > 0 else 5
+    window = max(1, -(-total // target)) if total > 0 else 5  # round up: never exceed target
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for old in out_dir.glob("*.jpg"):

@@ -32,7 +32,7 @@ def load_views(npz_path: Path):
         views.append(View(str(name), d["K"][i], d["R"][i], d["t"][i], int(w), int(h)))
         a, b = d["obs_offsets"][i], d["obs_offsets"][i + 1]
         obs.append(d["obs"][a:b])
-    return views, list(d["k1"]), obs, d["sparse_xyz"], d["sparse_rgb"]
+    return views, list(d["k1"]), obs
 
 
 def write_ply(path: Path, pts: np.ndarray, rgb: np.ndarray) -> None:
@@ -68,7 +68,7 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
     subprocess.run([sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()),
                     str(fov)], check=True, env=env, cwd=src_dir)
     sfm_stats = json.loads((work / "sfm_stats.json").read_text())
-    views, k1s, obs, sparse_xyz, sparse_rgb = load_views(work / "sfm.npz")
+    views, k1s, obs = load_views(work / "sfm.npz")
 
     log(f"[3/6] AI depth on {len(views)} frames")
     model = DepthModel()
