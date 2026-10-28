@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vid3d viewer</title>
+<style>
+  :root { --bg:#111317; --panel:#1b1e24ee; --line:#2c313a; --text:#e6e8eb; --muted:#9aa1ab; --accent:#ffb020; --ok:#5ac87a; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:13px/1.45 -apple-system, system-ui, sans-serif; overflow:hidden; }
+  #app { position:fixed; inset:0; }
+  .panel { position:fixed; top:12px; left:12px; width:300px; max-height:calc(100% - 24px); overflow:auto; background:var(--panel);
+           border:1px solid var(--line); border-radius:10px; padding:14px; backdrop-filter: blur(6px); }
+  h1 { font-size:15px; margin:0 0 2px; } h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:14px 0 6px; }
+  .big { font-size:20px; font-weight:600; } .muted { color:var(--muted); } .warn { color:var(--accent); font-size:12px; }
+  table { width:100%; border-collapse:collapse; } td { padding:2px 0; } td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+  button { background:#2a2f38; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
+  button:hover { border-color:#4a515c; } button.on { background:var(--accent); color:#111; border-color:var(--accent); }
+  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  input[type=number] { width:80px; background:#111; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px; font:inherit; }
+  input[type=range] { width:100%; }
+  ol { padding-left:18px; margin:4px 0; } li { font-variant-numeric:tabular-nums; }
+  .label { background:#000c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; white-space:nowrap; pointer-events:none; }
+  #hint { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--line);
+          padding:6px 12px; border-radius:8px; color:var(--muted); }
+  #plan { width:100%; border-radius:6px; margin-top:6px; display:block; }
+  @media (max-width:600px) { .panel { width:auto; right:12px; max-height:45%; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div class="panel">
+  <h1>vid3d</h1>
+  <div class="muted" id="status">Loading…</div>
+
+  <h2>Room estimate</h2>
+  <div class="big" id="dims">–</div>
+  <table id="stats"></table>
+  <div class="warn" id="scaleNote"></div>
+
+  <h2>Tools</h2>
+  <div class="row">
+    <button id="measureBtn">Measure</button>
+    <button id="topBtn">Top-down</button>
+    <button id="resetBtn">Reset view</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+  <ol id="measures"></ol>
+
+  <h2>Calibrate scale</h2>
+  <div class="muted" style="font-size:12px">Measure something you know (a door is ~2.03 m tall), then type its true length.</div>
+  <div class="row" style="margin-top:6px">
+    <span>Last line is</span><input id="trueLen" type="number" step="0.01" placeholder="m"><span>m</span>
+    <button id="calBtn">Apply</button><button id="uncalBtn">Undo</button>
+  </div>
+
+  <h2>Display</h2>
+  <label class="muted">Point size</label>
+  <input id="size" type="range" min="0.5" max="6" step="0.1" value="2">
+  <div class="row"><label><input type="checkbox" id="showCams" checked> camera path</label>
+    <label><input type="checkbox" id="showRoom" checked> room box</label></div>
+
+  <h2>Floor plan</h2>
+  <img id="plan" alt="Top-down floor plan" src="run/floorplan.png">
+</div>
+<div id="hint">Drag to orbit · right-drag to pan · scroll to zoom</div>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+
+const $ = (id) => document.getElementById(id);
+const app = $("app");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+app.appendChild(renderer.domElement);
+const labels = new CSS2DRenderer();
+labels.setSize(innerWidth, innerHeight);
+Object.assign(labels.domElement.style, { position: "fixed", top: 0, pointerEvents: "none" });
+app.appendChild(labels.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111317);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 500);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// Scale correction from user calibration (display only), saved per run.
+let KEY = "vid3d-cal", cal = 1;
+
+const fmt = (m) => {
+  m *= cal;
+  const inches = m / 0.0254, ft = Math.floor(inches / 12), inch = Math.round(inches - ft * 12);
+  return `${m.toFixed(2)} m · ${ft}′${inch}″`;
+};
+
+let meta = null, cloud = null, camLine = null, roomBox = null;
+const home = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
+
+function renderStats() {
+  const r = meta.room || {};
+  $("dims").textContent = r.length_m
+    ? `${(r.length_m * cal).toFixed(2)} × ${(r.width_m * cal).toFixed(2)} m` : "Room not fully captured";
+  const rows = [
+    ["Height", r.height_m ? fmt(r.height_m) : "ceiling not seen"],
+    ["Area", r.area_m2 ? `${(r.area_m2 * cal * cal).toFixed(1)} m² · ${(r.area_ft2 * cal * cal).toFixed(0)} ft²` : "–"],
+    ["Frames used", `${meta.frames_registered} / ${meta.frames_extracted}`],
+    ["Points", meta.points.toLocaleString()],
+    ["Solve error", `${meta.sfm_reprojection_error_px} px`],
+  ];
+  $("stats").innerHTML = rows.map(([a, b]) => `<tr><td class="muted">${a}</td><td>${b}</td></tr>`).join("");
+  // The scale guess is covered by the calibration tool, so drop that warning once calibrated.
+  const warns = (meta.warnings || []).filter((w) => cal === 1 || !w.startsWith("Real-world scale"));
+  if (cal !== 1) warns.unshift(`Scale calibrated by you (×${cal.toFixed(3)}).`);
+  $("scaleNote").innerHTML = warns.map((w) => `<div style="margin-top:6px">⚠ ${w}</div>`).join("");
+}
+
+async function load() {
+  meta = await (await fetch("run/scene.json")).json();
+  KEY = "vid3d-cal:" + meta.video + ":" + meta.points;
+  try { cal = parseFloat(localStorage.getItem(KEY)) || 1; } catch {}
+  renderStats();
+  const geom = await new PLYLoader().loadAsync("run/cloud.ply");
+  const mat = new THREE.PointsMaterial({ size: 2, vertexColors: true, sizeAttenuation: false });
+  cloud = new THREE.Points(geom, mat);
+  scene.add(cloud);
+
+  const cams = meta.cameras.map((c) => new THREE.Vector3(...c));
+  camLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(cams), new THREE.LineBasicMaterial({ color: 0xffb020 }));
+  scene.add(camLine);
+
+  const r = meta.room;
+  if (r && r.rect_m) {
+    const [x0, z0, x1, z1] = r.rect_m, h = r.height_m || 2.4;
+    const box = new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, h, z1));
+    roomBox = new THREE.Box3Helper(box, 0x5ac87a);
+    scene.add(roomBox);
+  }
+  const grid = new THREE.GridHelper(40, 40, 0x3a404a, 0x23272e);
+  scene.add(grid);
+
+  geom.computeBoundingSphere();
+  const s = geom.boundingSphere;
+  home.target.copy(s.center);
+  home.pos.copy(s.center).add(new THREE.Vector3(s.radius * 0.6, s.radius * 0.9, s.radius * 0.9));
+  resetView();
+  window.__vid3d = { lines, scene, camera };  // handy for debugging in the console
+  $("status").textContent = `Loaded · ${meta.seconds}s to process`;
+}
+
+function resetView() {
+  camera.position.copy(home.pos);
+  controls.target.copy(home.target);
+  controls.update();
+}
+
+// ---------- measuring ----------
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let measuring = false, pending = null;
+const lines = [];
+
+function pick(ev) {
+  mouse.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(mouse, camera);
+  // Pick radius grows with viewing distance so far-away walls are still clickable.
+  raycaster.params.Points.threshold = camera.position.distanceTo(controls.target) * 0.012;
+  const hits = raycaster.intersectObject(cloud);
+  if (!hits.length) return null;
+  // Nearest hit along the ray, snapped to the actual point.
+  hits.sort((a, b) => a.distanceToRay - b.distanceToRay || a.distance - b.distance);
+  const best = hits.slice(0, 8).sort((a, b) => a.distance - b.distance)[0];
+  return best.point.clone();
+}
+
+function dot(p) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 12), new THREE.MeshBasicMaterial({ color: 0xff4d6d }));
+  m.position.copy(p);
+  m.scale.setScalar(cloud.geometry.boundingSphere.radius / 120);
+  scene.add(m);
+  return m;
+}
+
+function addLine(a, b) {
+  const g = new THREE.BufferGeometry().setFromPoints([a, b]);
+  const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xff4d6d, depthTest: false }));
+  line.renderOrder = 2;
+  const el = document.createElement("div");
+  el.className = "label";
+  const lbl = new CSS2DObject(el);
+  lbl.position.copy(a).add(b).multiplyScalar(0.5);
+  scene.add(line, lbl);
+  const item = { a, b, raw: a.distanceTo(b), line, lbl, el, dots: [] };
+  lines.push(item);
+  refreshLines();
+  return item;
+}
+
+function refreshLines() {
+  lines.forEach((l) => (l.el.textContent = fmt(l.raw)));
+  $("measures").innerHTML = lines.map((l) => `<li>${fmt(l.raw)}</li>`).join("");
+}
+
+let downAt = null;
+renderer.domElement.addEventListener("pointerdown", (e) => (downAt = [e.clientX, e.clientY]));
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (!measuring || !cloud || !downAt) return;
+  if (Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return; // was a drag
+  const p = pick(e);
+  if (!p) { $("hint").textContent = "No point there. Click directly on the model."; return; }
+  if (!pending) {
+    pending = { p, dot: dot(p) };
+    $("hint").textContent = "Click the second point";
+  } else {
+    const item = addLine(pending.p, p);
+    item.dots.push(pending.dot, dot(p));
+    pending = null;
+    $("hint").textContent = "Click a first point to measure again";
+  }
+});
+
+$("measureBtn").onclick = () => {
+  measuring = !measuring;
+  $("measureBtn").classList.toggle("on", measuring);
+  $("hint").textContent = measuring ? "Click a first point on the model" : "Drag to orbit · right-drag to pan · scroll to zoom";
+};
+$("clearBtn").onclick = () => {
+  lines.forEach((l) => scene.remove(l.line, l.lbl, ...l.dots));
+  if (pending) scene.remove(pending.dot);
+  lines.length = 0; pending = null; refreshLines();
+};
+
+function setCal(v) {
+  cal = v;
+  try { localStorage.setItem(KEY, String(v)); } catch {}
+  renderStats(); refreshLines();
+}
+$("calBtn").onclick = () => {
+  const t = parseFloat($("trueLen").value);
+  const last = lines[lines.length - 1];
+  if (!last) return alert("Measure something first.");
+  if (!(t > 0)) return alert("Type the true length in metres.");
+  setCal(t / last.raw);
+};
+$("uncalBtn").onclick = () => setCal(1);
+
+// ---------- view controls ----------
+let top = false;
+$("topBtn").onclick = () => {
+  top = !top;
+  $("topBtn").classList.toggle("on", top);
+  if (top) {
+    const s = cloud.geometry.boundingSphere;
+    controls.target.set(s.center.x, 0, s.center.z);
+    camera.position.set(s.center.x, s.radius * 2.2, s.center.z + 0.001);
+    controls.update();
+  } else resetView();
+};
+$("resetBtn").onclick = () => { top = false; $("topBtn").classList.remove("on"); resetView(); };
+$("size").oninput = (e) => cloud && (cloud.material.size = +e.target.value);
+$("showCams").onchange = (e) => camLine && (camLine.visible = e.target.checked);
+$("showRoom").onchange = (e) => roomBox && (roomBox.visible = e.target.checked);
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labels.setSize(innerWidth, innerHeight);
+});
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+  labels.render(scene, camera);
+});
+
+load().catch((e) => ($("status").textContent = "Failed to load: " + e.message));
+</script>
+</body>
+</html>

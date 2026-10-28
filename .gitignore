@@ -1,0 +1,33 @@
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*_secret*
+*_credentials*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/settings.json
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+
+# Generated
+*.log
+*.tmp
+runs/
+samples/
+output/
