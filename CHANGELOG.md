@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 - Synthetic known-size room generator for accuracy checks; unit tests.
 
 ### Docs
+- MIT license.
 - New README with logo, quick start and roadmap.
 - `docs/RESEARCH.md`: review of open-source 3D reconstruction work (Depth Anything 3, MapAnything, MoGe-2, SpatialLM, Gaussian splatting on Mac) and free GPU options.
 

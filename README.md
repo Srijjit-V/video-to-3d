@@ -112,6 +112,10 @@ VID3D_E2E=1 .venv/bin/python -m pytest -q tests/test_e2e.py     # full pipeline 
 | `tests/` | Unit tests plus an opt-in end-to-end test |
 | `docs/` | Research notes and the logo |
 
+## License
+
+[MIT](LICENSE). The Depth Anything V2 **Small** model used here is Apache 2.0; COLMAP is BSD.
+
 ## Built on
 
 [COLMAP](https://colmap.github.io/) / [pycolmap](https://github.com/colmap/pycolmap) ·
