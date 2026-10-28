@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 - `vid3d view`: local three.js viewer with point measuring (m and ft/in), scale calibration, top-down view and floor plan.
 - Synthetic known-size room generator for accuracy checks; unit tests.
 
+### Docs
+- New README with logo, quick start and roadmap.
+- `docs/RESEARCH.md`: review of open-source 3D reconstruction work (Depth Anything 3, MapAnything, MoGe-2, SpatialLM, Gaussian splatting on Mac) and free GPU options.
+
 ### Fixed
 - Short clips no longer keep up to twice the requested frames (which could skip all-pairs matching and stretch the room).
 

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="video-to-3d logo: a video frame turning into a measured 3D room">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#151a22"/>
+      <stop offset="1" stop-color="#0c0f14"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+
+  <!-- video frame (left) -->
+  <rect x="30" y="80" width="78" height="60" rx="8" fill="none" stroke="#ffb020" stroke-width="6"/>
+  <path d="M60 98 L80 110 L60 122 Z" fill="#ffb020"/>
+
+  <!-- frame dissolving into points -->
+  <g fill="#ffb020">
+    <circle cx="118" cy="96" r="4"/>
+    <circle cx="128" cy="118" r="3.5" opacity=".85"/>
+    <circle cx="119" cy="132" r="3" opacity=".7"/>
+    <circle cx="136" cy="104" r="3" opacity=".75"/>
+    <circle cx="140" cy="128" r="2.5" opacity=".6"/>
+  </g>
+
+  <!-- 3D room box (right), points become edges -->
+  <g fill="none" stroke="#e6e8eb" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M150 92 L190 72 L230 92 L190 112 Z"/>
+    <path d="M150 92 L150 150 L190 170 L230 150 L230 92"/>
+    <path d="M190 112 L190 170"/>
+  </g>
+  <g fill="#e6e8eb">
+    <circle cx="150" cy="92" r="5"/><circle cx="190" cy="72" r="5"/>
+    <circle cx="230" cy="92" r="5"/><circle cx="190" cy="112" r="5"/>
+    <circle cx="150" cy="150" r="5"/><circle cx="190" cy="170" r="5"/>
+    <circle cx="230" cy="150" r="5"/>
+  </g>
+
+  <!-- measuring line along the floor edge -->
+  <g stroke="#ff4d6d" stroke-width="4" stroke-linecap="round">
+    <path d="M146 166 L186 186"/>
+    <path d="M142 160 L150 172"/>
+    <path d="M182 180 L190 192"/>
+  </g>
+
+  <text x="128" y="226" text-anchor="middle" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif" font-size="28" font-weight="700" fill="#e6e8eb">video<tspan fill="#ffb020">→</tspan>3d</text>
+</svg>
