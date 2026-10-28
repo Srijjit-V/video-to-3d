@@ -61,9 +61,12 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
     extract_frames(video, frames_dir, target=n_frames)
 
     log("[2/6] solving camera path with COLMAP (separate process)")
-    env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]))
-    subprocess.run([sys.executable, "-m", "vid3d.sfm", str(frames_dir), str(work), str(fov)],
-                   check=True, env=env)
+    # -P / PYTHONSAFEPATH: don't add the current folder to the import path, so a
+    # stray file there (e.g. a "numpy.py") can't be imported in place of the real one.
+    src_dir = Path(__file__).resolve().parents[1]
+    env = dict(os.environ, PYTHONPATH=str(src_dir), PYTHONSAFEPATH="1")
+    subprocess.run([sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()),
+                    str(fov)], check=True, env=env, cwd=src_dir)
     sfm_stats = json.loads((work / "sfm_stats.json").read_text())
     views, k1s, obs, sparse_xyz, sparse_rgb = load_views(work / "sfm.npz")
 

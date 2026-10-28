@@ -78,6 +78,8 @@ import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const $ = (id) => document.getElementById(id);
+// scene.json is data, not markup: escape anything from it before it goes into innerHTML.
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const app = $("app");
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio);
@@ -117,11 +119,12 @@ function renderStats() {
     ["Points", meta.points.toLocaleString()],
     ["Solve error", `${meta.sfm_reprojection_error_px} px`],
   ];
-  $("stats").innerHTML = rows.map(([a, b]) => `<tr><td class="muted">${a}</td><td>${b}</td></tr>`).join("");
+  $("stats").innerHTML = rows.map(([a, b]) => `<tr><td class="muted">${esc(a)}</td><td>${esc(b)}</td></tr>`).join("");
   // The scale guess is covered by the calibration tool, so drop that warning once calibrated.
-  const warns = (meta.warnings || []).filter((w) => cal === 1 || !w.startsWith("Real-world scale"));
+  const warns = (Array.isArray(meta.warnings) ? meta.warnings : []).map(String)
+    .filter((w) => cal === 1 || !w.startsWith("Real-world scale"));
   if (cal !== 1) warns.unshift(`Scale calibrated by you (×${cal.toFixed(3)}).`);
-  $("scaleNote").innerHTML = warns.map((w) => `<div style="margin-top:6px">⚠ ${w}</div>`).join("");
+  $("scaleNote").innerHTML = warns.map((w) => `<div style="margin-top:6px">⚠ ${esc(w)}</div>`).join("");
 }
 
 async function load() {
@@ -207,7 +210,7 @@ function addLine(a, b) {
 
 function refreshLines() {
   lines.forEach((l) => (l.el.textContent = fmt(l.raw)));
-  $("measures").innerHTML = lines.map((l) => `<li>${fmt(l.raw)}</li>`).join("");
+  $("measures").innerHTML = lines.map((l) => `<li>${esc(fmt(l.raw))}</li>`).join("");
 }
 
 let downAt = null;

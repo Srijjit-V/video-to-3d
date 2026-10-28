@@ -82,5 +82,13 @@ def test_viewer_server_blocks_paths_outside_run(tmp_path):
             urllib.request.urlopen(base + "/run/../secret.txt")
         with pytest.raises(urllib.error.HTTPError):
             urllib.request.urlopen(base + "/run/%2e%2e/secret.txt")
+        # DNS rebinding: a foreign Host header must be refused.
+        req = urllib.request.Request(base + "/run/scene.json", headers={"Host": "evil.example:80"})
+        with pytest.raises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(req)
+        assert e.value.code == 421
+        req = urllib.request.Request(base + "/run/scene.json",
+                                     headers={"Host": f"localhost:{srv.server_address[1]}"})
+        assert json.load(urllib.request.urlopen(req)) == {"ok": 1}
     finally:
         srv.shutdown()

@@ -18,6 +18,18 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
         self.run_dir = run_dir
         super().__init__(*a, directory=str(VIEWER_DIR), **kw)
 
+    def _host_ok(self) -> bool:
+        # Block DNS rebinding: a web page on evil.com that re-points its name at
+        # 127.0.0.1 still sends "Host: evil.com", so only accept local names.
+        port = self.server.server_address[1]
+        return self.headers.get("Host", "") in {f"127.0.0.1:{port}", f"localhost:{port}"}
+
+    def send_head(self):
+        if not self._host_ok():
+            self.send_error(421, "Misdirected Request")
+            return None
+        return super().send_head()
+
     def translate_path(self, path):
         clean = path.split("?", 1)[0].split("#", 1)[0]
         if clean.startswith("/run/"):

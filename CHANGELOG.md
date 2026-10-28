@@ -12,3 +12,8 @@ All notable changes to this project will be documented in this file.
 - All-pairs frame matching for ≤150 frames (closes loops, prevents drift) and automatic retry when the camera solve stalls.
 - `vid3d view`: local three.js viewer with point measuring (m and ft/in), scale calibration, top-down view and floor plan.
 - Synthetic known-size room generator for accuracy checks; unit tests.
+
+### Security
+- Viewer escapes all text from scene.json before inserting it into the page.
+- Viewer server only answers requests addressed to 127.0.0.1/localhost (blocks DNS rebinding).
+- Camera-solve subprocess runs with Python safe-path mode so stray files in the current folder can't be imported.
