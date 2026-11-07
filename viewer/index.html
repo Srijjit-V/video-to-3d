@@ -1,292 +1,181 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-mode="loading">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>vid3d viewer</title>
-<style>
-  :root { --bg:#111317; --panel:#1b1e24ee; --line:#2c313a; --text:#e6e8eb; --muted:#9aa1ab; --accent:#ffb020; --ok:#5ac87a; }
-  * { box-sizing: border-box; }
-  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:13px/1.45 -apple-system, system-ui, sans-serif; overflow:hidden; }
-  #app { position:fixed; inset:0; }
-  .panel { position:fixed; top:12px; left:12px; width:300px; max-height:calc(100% - 24px); overflow:auto; background:var(--panel);
-           border:1px solid var(--line); border-radius:10px; padding:14px; backdrop-filter: blur(6px); }
-  h1 { font-size:15px; margin:0 0 2px; } h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:14px 0 6px; }
-  .big { font-size:20px; font-weight:600; } .muted { color:var(--muted); } .warn { color:var(--accent); font-size:12px; }
-  table { width:100%; border-collapse:collapse; } td { padding:2px 0; } td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
-  button { background:#2a2f38; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
-  button:hover { border-color:#4a515c; } button.on { background:var(--accent); color:#111; border-color:var(--accent); }
-  .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-  input[type=number] { width:80px; background:#111; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px; font:inherit; }
-  input[type=range] { width:100%; }
-  ol { padding-left:18px; margin:4px 0; } li { font-variant-numeric:tabular-nums; }
-  .label { background:#000c; color:#fff; padding:2px 6px; border-radius:4px; font-size:12px; white-space:nowrap; pointer-events:none; }
-  #hint { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--line);
-          padding:6px 12px; border-radius:8px; color:var(--muted); }
-  #plan { width:100%; border-radius:6px; margin-top:6px; display:block; }
-  @media (max-width:600px) { .panel { width:auto; right:12px; max-height:45%; } }
-</style>
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-} }
-</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>video-to-3d: turn a room walkthrough into a 3D model you can measure</title>
+<meta name="description" content="Free and open source. Turn a phone video of a room into a 3D point cloud in real-world metres, with its size, floor plan and colours.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0e12">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;display=swap">
+<link rel="stylesheet" href="css/styles.css">
+<script type="module" src="js/app.js"></script>
 </head>
 <body>
-<div id="app"></div>
-<div class="panel">
-  <h1>vid3d</h1>
-  <div class="muted" id="status">Loading…</div>
+<a class="skip" href="#main">Skip to the content</a>
+<div class="ambient" aria-hidden="true"></div>
 
-  <h2>Room estimate</h2>
-  <div class="big" id="dims">–</div>
-  <table id="stats"></table>
-  <div class="warn" id="scaleNote"></div>
+<header class="site">
+  <a class="brand" href="./" aria-label="video-to-3d home">
+    <img src="favicon.svg" alt="" width="32" height="32">
+    <span>video-to-3d</span>
+  </a>
+  <nav aria-label="Project links">
+    <a class="link" href="https://github.com/Srijjit-V/video-to-3d" rel="noopener">GitHub</a>
+  </nav>
+</header>
 
-  <h2>Tools</h2>
-  <div class="row">
-    <button id="measureBtn">Measure</button>
-    <button id="topBtn">Top-down</button>
-    <button id="resetBtn">Reset view</button>
-    <button id="clearBtn">Clear</button>
-  </div>
-  <ol id="measures"></ol>
+<main id="main">
 
-  <h2>Calibrate scale</h2>
-  <div class="muted" style="font-size:12px">Measure something you know (a door is ~2.03 m tall), then type its true length.</div>
-  <div class="row" style="margin-top:6px">
-    <span>Last line is</span><input id="trueLen" type="number" step="0.01" placeholder="m"><span>m</span>
-    <button id="calBtn">Apply</button><button id="uncalBtn">Undo</button>
-  </div>
+  <!-- 1. Start: explanation, drop zone, sample -->
+  <section id="start" class="screen" aria-labelledby="start-title">
+    <div class="hero">
+      <p class="eyebrow">Free · open source · runs on your laptop</p>
+      <h1 id="start-title">Walk through a room. Get a 3D model you can&nbsp;measure.</h1>
+      <p class="lede">Film a slow walk around a room. video-to-3d rebuilds it as a 3D point cloud in real-world metres, with its size, a floor plan and its colours.</p>
 
-  <h2>Display</h2>
-  <label class="muted">Point size</label>
-  <input id="size" type="range" min="0.5" max="6" step="0.1" value="2">
-  <div class="row"><label><input type="checkbox" id="showCams" checked> camera path</label>
-    <label><input type="checkbox" id="showRoom" checked> room box</label></div>
+      <div id="drop" class="drop" role="button" tabindex="0" aria-describedby="drop-sub">
+        <svg class="drop-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        <span id="drop-title" class="drop-title">Drop a video here</span>
+        <span id="drop-sub" class="drop-sub">or choose a file</span>
+        <input id="file" type="file" hidden>
+      </div>
+      <p id="mode-note" class="note" aria-live="polite"></p>
+      <p id="start-error" class="error-inline" role="alert" hidden></p>
 
-  <h2>Floor plan</h2>
-  <img id="plan" alt="Top-down floor plan" src="run/floorplan.png">
-</div>
-<div id="hint">Drag to orbit · right-drag to pan · scroll to zoom</div>
+      <details id="advanced" class="advanced">
+        <summary>Advanced options</summary>
+        <div class="fields">
+          <label for="opt-camera">Camera height (m)
+            <input id="opt-camera" type="number" inputmode="decimal" min="0.3" max="3" step="0.05" placeholder="1.45…" autocomplete="off">
+            <span class="hint">How high you held the phone. Sets the real-world scale.</span></label>
+          <label for="opt-ceiling">Ceiling height (m)
+            <input id="opt-ceiling" type="number" inputmode="decimal" min="1.5" max="6" step="0.05" placeholder="2.44…" autocomplete="off">
+            <span class="hint">If the ceiling is in the video, this is the most accurate scale.</span></label>
+          <label for="opt-fov">Lens field of view (°)
+            <input id="opt-fov" type="number" inputmode="numeric" min="20" max="150" step="1" placeholder="70…" autocomplete="off">
+            <span class="hint">About 70 for a phone's main camera, about 110 for ultra-wide.</span></label>
+        </div>
+      </details>
 
-<script type="module">
-import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
-import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+      <div class="actions">
+        <button id="sample-btn" class="btn btn-ghost" type="button">Open the sample room</button>
+        <a class="btn btn-quiet" href="https://github.com/Srijjit-V/video-to-3d" rel="noopener">View the code</a>
+      </div>
+    </div>
+  </section>
 
-const $ = (id) => document.getElementById(id);
-// scene.json is data, not markup: escape anything from it before it goes into innerHTML.
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const app = $("app");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(devicePixelRatio);
-renderer.setSize(innerWidth, innerHeight);
-app.appendChild(renderer.domElement);
-const labels = new CSS2DRenderer();
-labels.setSize(innerWidth, innerHeight);
-Object.assign(labels.domElement.style, { position: "fixed", top: 0, pointerEvents: "none" });
-app.appendChild(labels.domElement);
+  <!-- 2. Progress (local mode only) -->
+  <section id="progress" class="screen" aria-labelledby="progress-title" hidden>
+    <div class="card progress-card">
+      <h2 id="progress-title" class="h-display">Building your 3D model</h2>
+      <p id="prog-summary" class="muted">Starting…</p>
+      <div class="bar" role="progressbar" aria-labelledby="progress-title" aria-valuemin="0" aria-valuemax="6" aria-valuenow="0"><span id="bar-fill"></span></div>
+      <ol id="stage-list" class="stages"></ol>
+      <p class="muted small">Time so far <strong id="elapsed" class="tabular">0:00</strong></p>
+      <div id="prog-error" class="callout" role="alert" hidden>
+        <strong id="prog-error-title">That didn't work</strong>
+        <p id="prog-error-msg"></p>
+        <details><summary>Technical details</summary><pre id="prog-log"></pre></details>
+      </div>
+      <div class="actions">
+        <button id="cancel-btn" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="again-btn" class="btn btn-primary" type="button" hidden>Try another video</button>
+      </div>
+      <p id="prog-live" class="sr-only" aria-live="polite"></p>
+    </div>
+  </section>
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x111317);
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 500);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
+  <!-- 3. The 3D scene -->
+  <section id="scene" class="scene" aria-label="3D viewer" hidden>
+    <div id="canvas-host" class="canvas-host"></div>
+    <p id="hint" class="hint-bar" aria-live="polite">Drag to orbit · right-drag to pan · scroll to zoom</p>
 
-// Scale correction from user calibration (display only), saved per run.
-let KEY = "vid3d-cal", cal = 1;
+    <div id="legend" class="legend" hidden>
+      <span id="legend-title" class="legend-title"></span>
+      <span id="legend-bar" class="legend-bar" aria-hidden="true"></span>
+      <span class="legend-ends"><span id="legend-lo"></span><span id="legend-hi"></span></span>
+    </div>
 
-const fmt = (m) => {
-  m *= cal;
-  const inches = m / 0.0254, ft = Math.floor(inches / 12), inch = Math.round(inches - ft * 12);
-  return `${m.toFixed(2)} m · ${ft}′${inch}″`;
-};
+    <div class="toolbar" role="toolbar" aria-label="3D tools">
+      <button id="tool-measure" class="btn tool" type="button" aria-pressed="false" aria-keyshortcuts="M">Measure</button>
+      <button id="tool-pick" class="btn tool" type="button" aria-pressed="false" aria-keyshortcuts="P">Pick colour</button>
+      <button id="tool-top" class="btn tool" type="button" aria-pressed="false" aria-keyshortcuts="T">Top-down</button>
+      <button id="tool-reset" class="btn tool" type="button" aria-keyshortcuts="R">Reset view</button>
+      <button id="tool-panel" class="btn tool" type="button" aria-expanded="true" aria-controls="panel">Details</button>
+    </div>
 
-let meta = null, cloud = null, camLine = null, roomBox = null;
-const home = { pos: new THREE.Vector3(), target: new THREE.Vector3() };
+    <aside id="panel" class="panel" aria-label="Room details and tools">
+      <div class="panel-head">
+        <h2 id="scene-title" class="h-display">Room estimate</h2>
+        <button id="new-btn" class="btn btn-quiet small-btn" type="button">New video</button>
+      </div>
+      <p id="status" class="muted small"></p>
 
-function renderStats() {
-  const r = meta.room || {};
-  $("dims").textContent = r.length_m
-    ? `${(r.length_m * cal).toFixed(2)} × ${(r.width_m * cal).toFixed(2)} m` : "Room not fully captured";
-  const rows = [
-    ["Height", r.height_m ? fmt(r.height_m) : "ceiling not seen"],
-    ["Area", r.area_m2 ? `${(r.area_m2 * cal * cal).toFixed(1)} m² · ${(r.area_ft2 * cal * cal).toFixed(0)} ft²` : "–"],
-    ["Frames used", `${meta.frames_registered} / ${meta.frames_extracted}`],
-    ["Points", meta.points.toLocaleString()],
-    ["Solve error", `${meta.sfm_reprojection_error_px} px`],
-  ];
-  $("stats").innerHTML = rows.map(([a, b]) => `<tr><td class="muted">${esc(a)}</td><td>${esc(b)}</td></tr>`).join("");
-  // The scale guess is covered by the calibration tool, so drop that warning once calibrated.
-  const warns = (Array.isArray(meta.warnings) ? meta.warnings : []).map(String)
-    .filter((w) => cal === 1 || !w.startsWith("Real-world scale"));
-  if (cal !== 1) warns.unshift(`Scale calibrated by you (×${cal.toFixed(3)}).`);
-  $("scaleNote").innerHTML = warns.map((w) => `<div style="margin-top:6px">⚠ ${esc(w)}</div>`).join("");
-}
+      <section aria-labelledby="h-room">
+        <h3 id="h-room" class="sr-only">Size</h3>
+        <p id="dims" class="big tabular">–</p>
+        <table id="stats" class="stats"></table>
+        <div id="warnings" class="warnings"></div>
+      </section>
 
-async function load() {
-  meta = await (await fetch("run/scene.json")).json();
-  KEY = "vid3d-cal:" + meta.video + ":" + meta.points;
-  try { cal = parseFloat(localStorage.getItem(KEY)) || 1; } catch {}
-  renderStats();
-  const geom = await new PLYLoader().loadAsync("run/cloud.ply");
-  const mat = new THREE.PointsMaterial({ size: 2, vertexColors: true, sizeAttenuation: false });
-  cloud = new THREE.Points(geom, mat);
-  scene.add(cloud);
+      <section aria-labelledby="h-palette">
+        <h3 id="h-palette">Room palette</h3>
+        <div id="palette" class="palette"></div>
+      </section>
 
-  const cams = meta.cameras.map((c) => new THREE.Vector3(...c));
-  camLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(cams), new THREE.LineBasicMaterial({ color: 0xffb020 }));
-  scene.add(camLine);
+      <section aria-labelledby="h-color">
+        <h3 id="h-color">Colour</h3>
+        <label class="field" for="color-mode">Colour by
+          <select id="color-mode" name="color-mode"></select></label>
+        <p id="mode-why" class="muted small" hidden></p>
+        <div id="pick-readout" class="readout" aria-live="polite" hidden>
+          <span id="pick-swatch" class="swatch-big" aria-hidden="true"></span>
+          <div class="readout-text">
+            <span id="pick-rgb" class="tabular"></span>
+            <span id="pick-hex" class="tabular"></span>
+            <span id="pick-extra" class="muted small"></span>
+          </div>
+          <button id="pick-copy" class="btn btn-quiet small-btn" type="button">Copy hex</button>
+        </div>
+        <p id="pick-help" class="muted small">Press <kbd>P</kbd>, then click a point. On the keyboard, press Enter to pick the point under the centre cross.</p>
+      </section>
 
-  const r = meta.room;
-  if (r && r.rect_m) {
-    const [x0, z0, x1, z1] = r.rect_m, h = r.height_m || 2.4;
-    const box = new THREE.Box3(new THREE.Vector3(x0, 0, z0), new THREE.Vector3(x1, h, z1));
-    roomBox = new THREE.Box3Helper(box, 0x5ac87a);
-    scene.add(roomBox);
-  }
-  const grid = new THREE.GridHelper(40, 40, 0x3a404a, 0x23272e);
-  scene.add(grid);
+      <section aria-labelledby="h-measure">
+        <h3 id="h-measure">Measure</h3>
+        <p class="muted small">Press <kbd>M</kbd>, then click two points.</p>
+        <ol id="measures" class="measures tabular"></ol>
+        <button id="clear-btn" class="btn btn-quiet small-btn" type="button">Clear</button>
+      </section>
 
-  geom.computeBoundingSphere();
-  const s = geom.boundingSphere;
-  home.target.copy(s.center);
-  home.pos.copy(s.center).add(new THREE.Vector3(s.radius * 0.6, s.radius * 0.9, s.radius * 0.9));
-  resetView();
-  window.__vid3d = { lines, scene, camera };  // handy for debugging in the console
-  $("status").textContent = `Loaded · ${meta.seconds}s to process`;
-}
+      <section aria-labelledby="h-cal">
+        <h3 id="h-cal">Calibrate scale</h3>
+        <p class="muted small">Measure something you know (a door is about 2.03 m), then type its true length.</p>
+        <div class="row">
+          <label class="field inline" for="true-len">True length (m)
+            <input id="true-len" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="2.03…" autocomplete="off"></label>
+          <button id="cal-btn" class="btn btn-ghost" type="button">Apply</button>
+          <button id="uncal-btn" class="btn btn-quiet" type="button">Undo</button>
+        </div>
+      </section>
 
-function resetView() {
-  camera.position.copy(home.pos);
-  controls.target.copy(home.target);
-  controls.update();
-}
+      <section aria-labelledby="h-display">
+        <h3 id="h-display">Display</h3>
+        <label class="field" for="pt-size">Point size
+          <input id="pt-size" type="range" min="0.5" max="6" step="0.1" value="2"></label>
+        <label class="check"><input id="show-cams" type="checkbox" checked> Camera path</label>
+        <label class="check"><input id="show-room" type="checkbox" checked> Room box</label>
+      </section>
 
-// ---------- measuring ----------
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-let measuring = false, pending = null;
-const lines = [];
-
-function pick(ev) {
-  mouse.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
-  raycaster.setFromCamera(mouse, camera);
-  // Pick radius grows with viewing distance so far-away walls are still clickable.
-  raycaster.params.Points.threshold = camera.position.distanceTo(controls.target) * 0.012;
-  const hits = raycaster.intersectObject(cloud);
-  if (!hits.length) return null;
-  // Nearest hit along the ray, snapped to the actual point.
-  hits.sort((a, b) => a.distanceToRay - b.distanceToRay || a.distance - b.distance);
-  const best = hits.slice(0, 8).sort((a, b) => a.distance - b.distance)[0];
-  return best.point.clone();
-}
-
-function dot(p) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 12), new THREE.MeshBasicMaterial({ color: 0xff4d6d }));
-  m.position.copy(p);
-  m.scale.setScalar(cloud.geometry.boundingSphere.radius / 120);
-  scene.add(m);
-  return m;
-}
-
-function addLine(a, b) {
-  const g = new THREE.BufferGeometry().setFromPoints([a, b]);
-  const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xff4d6d, depthTest: false }));
-  line.renderOrder = 2;
-  const el = document.createElement("div");
-  el.className = "label";
-  const lbl = new CSS2DObject(el);
-  lbl.position.copy(a).add(b).multiplyScalar(0.5);
-  scene.add(line, lbl);
-  const item = { a, b, raw: a.distanceTo(b), line, lbl, el, dots: [] };
-  lines.push(item);
-  refreshLines();
-  return item;
-}
-
-function refreshLines() {
-  lines.forEach((l) => (l.el.textContent = fmt(l.raw)));
-  $("measures").innerHTML = lines.map((l) => `<li>${esc(fmt(l.raw))}</li>`).join("");
-}
-
-let downAt = null;
-renderer.domElement.addEventListener("pointerdown", (e) => (downAt = [e.clientX, e.clientY]));
-renderer.domElement.addEventListener("pointerup", (e) => {
-  if (!measuring || !cloud || !downAt) return;
-  if (Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return; // was a drag
-  const p = pick(e);
-  if (!p) { $("hint").textContent = "No point there. Click directly on the model."; return; }
-  if (!pending) {
-    pending = { p, dot: dot(p) };
-    $("hint").textContent = "Click the second point";
-  } else {
-    const item = addLine(pending.p, p);
-    item.dots.push(pending.dot, dot(p));
-    pending = null;
-    $("hint").textContent = "Click a first point to measure again";
-  }
-});
-
-$("measureBtn").onclick = () => {
-  measuring = !measuring;
-  $("measureBtn").classList.toggle("on", measuring);
-  $("hint").textContent = measuring ? "Click a first point on the model" : "Drag to orbit · right-drag to pan · scroll to zoom";
-};
-$("clearBtn").onclick = () => {
-  lines.forEach((l) => scene.remove(l.line, l.lbl, ...l.dots));
-  if (pending) scene.remove(pending.dot);
-  lines.length = 0; pending = null; refreshLines();
-};
-
-function setCal(v) {
-  cal = v;
-  try { localStorage.setItem(KEY, String(v)); } catch {}
-  renderStats(); refreshLines();
-}
-$("calBtn").onclick = () => {
-  const t = parseFloat($("trueLen").value);
-  const last = lines[lines.length - 1];
-  if (!last) return alert("Measure something first.");
-  if (!(t > 0)) return alert("Type the true length in metres.");
-  setCal(t / last.raw);
-};
-$("uncalBtn").onclick = () => setCal(1);
-
-// ---------- view controls ----------
-let top = false;
-$("topBtn").onclick = () => {
-  top = !top;
-  $("topBtn").classList.toggle("on", top);
-  if (top) {
-    const s = cloud.geometry.boundingSphere;
-    controls.target.set(s.center.x, 0, s.center.z);
-    camera.position.set(s.center.x, s.radius * 2.2, s.center.z + 0.001);
-    controls.update();
-  } else resetView();
-};
-$("resetBtn").onclick = () => { top = false; $("topBtn").classList.remove("on"); resetView(); };
-$("size").oninput = (e) => cloud && (cloud.material.size = +e.target.value);
-$("showCams").onchange = (e) => camLine && (camLine.visible = e.target.checked);
-$("showRoom").onchange = (e) => roomBox && (roomBox.visible = e.target.checked);
-
-addEventListener("resize", () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-  labels.setSize(innerWidth, innerHeight);
-});
-
-renderer.setAnimationLoop(() => {
-  controls.update();
-  renderer.render(scene, camera);
-  labels.render(scene, camera);
-});
-
-load().catch((e) => ($("status").textContent = "Failed to load: " + e.message));
-</script>
+      <section id="plan-wrap" aria-labelledby="h-plan">
+        <h3 id="h-plan">Floor plan</h3>
+        <img id="plan" alt="Top-down floor plan of the scanned room" width="640" height="640">
+      </section>
+    </aside>
+  </section>
+</main>
 </body>
 </html>
