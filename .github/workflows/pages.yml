@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'  # a manual run from another branch must not get deploy rights
     runs-on: ubuntu-latest
     environment:
       name: github-pages
