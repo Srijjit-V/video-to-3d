@@ -1,0 +1,361 @@
+"""Drives the real viewer in Chrome with Playwright. Opt-in: VID3D_UI=1 pytest tests/test_ui.py
+
+The full local run (drop the synthetic video, ~3 minutes of real processing) also needs VID3D_E2E=1.
+Set VID3D_SHOTS=1 to refresh the screenshots in docs/screenshots/.
+"""
+
+import functools
+import http.server
+import json
+import os
+import re
+import threading
+import time
+from pathlib import Path
+
+import cv2
+import numpy as np
+import pytest
+
+pytestmark = pytest.mark.skipif(os.environ.get("VID3D_UI") != "1", reason="set VID3D_UI=1 to run")
+
+ROOT = Path(__file__).resolve().parents[1]
+VIEWER = ROOT / "viewer"
+SHOTS = ROOT / "docs" / "screenshots"
+VIDEO = ROOT / "samples" / "synthetic_room.mp4"
+CHROME_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"]
+
+
+class Quiet(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+
+def serve_in_thread(handler):
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+@pytest.fixture(scope="module")
+def playwright_browser():
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(channel="chrome", headless=True, args=CHROME_ARGS)
+        yield browser
+        browser.close()
+
+
+@pytest.fixture
+def hosted_url():
+    """The viewer folder served as plain static files, exactly what Vercel or GitHub Pages serves."""
+    srv = serve_in_thread(functools.partial(Quiet, directory=str(VIEWER)))
+    yield f"http://127.0.0.1:{srv.server_address[1]}/index.html"
+    srv.shutdown()
+
+
+@pytest.fixture
+def local_url(tmp_path):
+    """`vid3d serve`: the same server, running the real pipeline."""
+    from vid3d.server import Jobs, ServeHandler
+
+    srv = serve_in_thread(functools.partial(ServeHandler, jobs=Jobs(tmp_path / "jobs")))
+    (tmp_path / "jobs").mkdir(exist_ok=True)
+    yield f"http://127.0.0.1:{srv.server_address[1]}/index.html"
+    srv.shutdown()
+
+
+class Page:
+    """A browser page that remembers every console error, page error and failed request."""
+
+    def __init__(self, browser, **ctx):
+        self.context = browser.new_context(**ctx)
+        self.page = self.context.new_page()
+        self.errors = []
+        self.page.on("console", lambda m: m.type == "error" and self.errors.append(f"console: {m.text}"))
+        self.page.on("pageerror", lambda e: self.errors.append(f"pageerror: {e}"))
+        self.page.on("requestfailed", lambda r: self.errors.append(f"request failed: {r.url}"))
+
+    def close(self):
+        self.context.close()
+
+
+@pytest.fixture
+def desktop(playwright_browser):
+    p = Page(playwright_browser, viewport={"width": 1440, "height": 900})
+    yield p
+    p.close()
+
+
+@pytest.fixture
+def phone(playwright_browser):
+    p = Page(playwright_browser, viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    yield p
+    p.close()
+
+
+def shot(page, name):
+    if os.environ.get("VID3D_SHOTS") == "1":
+        SHOTS.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(SHOTS / f"{name}.png"))
+
+
+def open_sample(pg, url):
+    pg.page.goto(url)
+    pg.page.click("#sample-btn")
+    pg.page.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=20000)
+    pg.page.wait_for_timeout(600)  # let the first frames render
+
+
+FIND_POINT = """([minX, minY, maxX, maxY]) => {
+  const v = window.__vid3d.view, r = v.renderer.domElement.getBoundingClientRect();
+  const found = [];
+  for (let i = 0; i < v.data.count && found.length < 2; i += 53) {
+    const s = v.screenPositionOf(i);
+    if (s.x < minX || s.x > maxX || s.y < minY || s.y > maxY) continue;
+    const hit = v.pickPoint(((s.x - r.left) / r.width) * 2 - 1, -((s.y - r.top) / r.height) * 2 + 1);
+    if (!hit) continue;
+    const c = v.data.colors, j = hit.index;
+    // click exactly where the pick was computed, so the app picks the very same point
+    found.push({ x: s.x, y: s.y, rgb: [c[3*j], c[3*j+1], c[3*j+2]], index: j, height: v.data.positions[3*j+1] });
+  }
+  return found;
+}"""
+
+
+def points_on_screen(pg, box):
+    pts = pg.page.evaluate(FIND_POINT, box)
+    assert len(pts) == 2, "no two pickable points were visible"
+    return pts
+
+
+# ---------- hosted (static) site ----------
+
+def test_hosted_start_screen_is_honest_about_what_it_can_do(desktop, hosted_url):
+    pg = desktop.page
+    pg.goto(hosted_url)
+    pg.wait_for_function("document.documentElement.dataset.mode === 'hosted'")
+    assert "can't process videos" in pg.inner_text("#mode-note")
+    assert pg.is_visible("#sample-btn") and pg.is_visible("#drop")
+    assert not pg.is_visible("#advanced")  # no processing, so no processing options
+    assert "GitHub.com/Srijjit-V/video-to-3d".lower() in pg.get_attribute("a.link", "href").lower()
+    shot(pg, "desktop-landing")
+    assert desktop.errors == []
+
+
+def test_hosted_sample_loads_colour_modes_picker_and_measure_work(desktop, hosted_url):
+    pg = desktop.page
+    open_sample(desktop, hosted_url)
+    assert re.fullmatch(r"\d\.\d\d × \d\.\d\d m", pg.inner_text("#dims"))
+    assert pg.locator(".swatch").count() >= 3  # wall / floor palette
+    assert "not seen" in pg.inner_text("#palette")  # the sample has no visible ceiling
+
+    # colour modes
+    assert pg.is_hidden("#legend")
+    for mode, label in (("height", "Height above floor"), ("distance", "Distance from camera path"), ("views", "Frames that saw the point")):
+        pg.select_option("#color-mode", mode)
+        assert pg.is_visible("#legend") and pg.inner_text("#legend-title") == label
+    pg.select_option("#color-mode", "true")
+    assert pg.is_hidden("#legend")
+
+    # colour picker: click a point, the readout must hold that point's real colour
+    pg.keyboard.press("p")
+    assert pg.get_attribute("#tool-pick", "aria-pressed") == "true"
+    a, b = points_on_screen(desktop, [420, 120, 1400, 760])
+    pg.mouse.click(a["x"], a["y"])
+    pg.wait_for_selector("#pick-readout", state="visible")
+    r, g, bl = a["rgb"]
+    assert pg.inner_text("#pick-rgb") == f"RGB {r}, {g}, {bl}"
+    assert pg.inner_text("#pick-hex") == "#{:02x}{:02x}{:02x}".format(r, g, bl)
+    assert "Height" in pg.inner_text("#pick-extra") and "seen in" in pg.inner_text("#pick-extra")
+    assert pg.evaluate("getComputedStyle(document.getElementById('pick-swatch')).backgroundColor") == f"rgb({r}, {g}, {bl})"
+
+    # measuring still works
+    pg.keyboard.press("m")
+    assert pg.get_attribute("#tool-measure", "aria-pressed") == "true"
+    pg.mouse.click(a["x"], a["y"])
+    pg.mouse.click(b["x"], b["y"])
+    pg.wait_for_selector("#measures li")
+    assert re.search(r"\d\.\d\d m · \d+′\d+″", pg.inner_text("#measures"))
+
+    # calibration rescales the room numbers
+    before = pg.inner_text("#dims")
+    pg.fill("#true-len", "1")
+    pg.click("#cal-btn")
+    assert pg.inner_text("#dims") != before
+    assert "calibrated" in pg.inner_text("#warnings")
+    pg.click("#uncal-btn")
+    assert pg.inner_text("#dims") == before
+
+    pg.keyboard.press("t")
+    assert pg.get_attribute("#tool-top", "aria-pressed") == "true"
+    shot(pg, "desktop-scene")
+    assert desktop.errors == []
+
+
+def test_hosted_opens_dropped_cloud_and_scene_files(desktop, hosted_url):
+    pg = desktop.page
+    pg.goto(hosted_url)
+    pg.set_input_files("#file", [str(VIEWER / "sample" / n) for n in ("cloud.ply", "scene.json", "floorplan.png")])
+    pg.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=20000)
+    assert re.fullmatch(r"\d\.\d\d × \d\.\d\d m", pg.inner_text("#dims"))
+    pg.wait_for_selector("#plan", state="visible")
+    assert desktop.errors == []
+
+
+def test_hosted_opens_a_lone_cloud_with_a_clear_limitation(desktop, hosted_url):
+    pg = desktop.page
+    pg.goto(hosted_url)
+    pg.set_input_files("#file", [str(VIEWER / "sample" / "cloud.ply")])
+    pg.wait_for_function("window.__vid3d && window.__vid3d.meta")
+    assert "No scene.json" in pg.inner_text("#warnings")
+    assert pg.is_hidden("#plan-wrap")
+
+
+def test_hosted_refuses_a_video_in_plain_words(desktop, hosted_url, tmp_path):
+    fake = tmp_path / "room.mp4"
+    fake.write_bytes(b"not really a video")
+    desktop.page.goto(hosted_url)
+    desktop.page.evaluate("document.getElementById('file').accept = ''")  # as if dropped, not chosen
+    desktop.page.set_input_files("#file", str(fake))
+    desktop.page.wait_for_selector("#start-error", state="visible")
+    assert "can't process videos" in desktop.page.inner_text("#start-error")
+
+
+def test_hosted_rejects_a_bad_file_with_a_message(desktop, hosted_url, tmp_path):
+    bad = tmp_path / "cloud.ply"
+    bad.write_text("hello")
+    desktop.page.goto(hosted_url)
+    desktop.page.set_input_files("#file", str(bad))
+    desktop.page.wait_for_selector("#start-error", state="visible")
+    assert "doesn't look like a .ply" in desktop.page.inner_text("#start-error")
+
+
+def test_keyboard_reaches_everything_and_shortcuts_work(desktop, hosted_url):
+    pg = desktop.page
+    pg.goto(hosted_url)
+    pg.keyboard.press("Tab")
+    assert pg.evaluate("document.activeElement.className") == "skip"
+    pg.keyboard.press("Enter")
+    # the drop zone opens with the keyboard too
+    pg.focus("#drop")
+    with pg.expect_file_chooser():
+        pg.keyboard.press("Enter")
+    open_sample(desktop, hosted_url)
+    for key, btn in (("m", "#tool-measure"), ("p", "#tool-pick")):
+        pg.keyboard.press(key)
+        assert pg.get_attribute(btn, "aria-pressed") == "true"
+    pg.keyboard.press("Escape")
+    assert pg.get_attribute("#tool-pick", "aria-pressed") == "false"
+    # every control shows a visible focus ring
+    pg.focus("#tool-reset")
+    assert pg.evaluate("getComputedStyle(document.activeElement).outlineStyle") == "solid"
+    # typing in a field must not trigger shortcuts
+    pg.focus("#true-len")
+    pg.keyboard.type("m")
+    assert pg.get_attribute("#tool-measure", "aria-pressed") == "false"
+
+
+def test_phone_layout_fits_and_targets_are_big_enough(phone, hosted_url):
+    pg = phone.page
+    pg.goto(hosted_url)
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390  # no sideways scroll
+    shot(pg, "phone-landing")
+    pg.click("#sample-btn")
+    pg.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=20000)
+    pg.wait_for_timeout(600)
+    assert pg.is_hidden("#panel")  # the details sheet starts closed on a phone
+    boxes = pg.evaluate("[...document.querySelectorAll('.toolbar .btn')].map(b => { const r = b.getBoundingClientRect(); return [r.width, r.height]; })")
+    assert all(h >= 44 for _, h in boxes)
+    bar = pg.evaluate("(() => { const r = document.querySelector('.toolbar').getBoundingClientRect(); return [r.left, r.right]; })()")
+    assert bar[0] >= 0 and bar[1] <= 390
+    shot(pg, "phone-scene")
+    pg.tap("#tool-panel")
+    assert pg.is_visible("#panel")
+    sizes = pg.evaluate("[...document.querySelectorAll('#panel button, #panel select, #panel input')].filter(e => e.offsetParent && e.type !== 'checkbox' && e.type !== 'range').map(e => e.getBoundingClientRect().height)")
+    assert sizes and min(sizes) >= 43.5
+    shot(pg, "phone-details")
+    # a tap picks a colour on a phone
+    pg.tap("#tool-panel")
+    pg.tap("#tool-pick")
+    a, _ = points_on_screen(phone, [20, 110, 370, 700])
+    pg.touchscreen.tap(a["x"], a["y"])
+    pg.wait_for_selector("#pick-readout", state="attached")
+    assert pg.inner_text("#pick-hex") == "#{:02x}{:02x}{:02x}".format(*a["rgb"])
+    assert phone.errors == []
+
+
+# ---------- local mode (vid3d serve) ----------
+
+def short_video(path, seconds=1):
+    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 30, (160, 120))
+    for _ in range(30 * seconds):
+        vw.write(np.zeros((120, 160, 3), np.uint8))
+    vw.release()
+
+
+def test_local_mode_offers_upload_and_advanced_options(desktop, local_url):
+    pg = desktop.page
+    pg.goto(local_url)
+    pg.wait_for_function("document.documentElement.dataset.mode === 'local'")
+    assert "Drop a video here" in pg.inner_text("#drop")
+    pg.click("#advanced summary")
+    assert all(pg.is_visible(i) for i in ("#opt-camera", "#opt-ceiling", "#opt-fov"))
+    assert desktop.errors == []
+
+
+def test_local_mode_explains_a_too_short_video(desktop, local_url, tmp_path):
+    clip = tmp_path / "short.mp4"
+    short_video(clip)
+    pg = desktop.page
+    pg.goto(local_url)
+    pg.set_input_files("#file", str(clip))
+    pg.wait_for_selector("#prog-error", state="visible", timeout=60000)
+    assert "only 1.0 seconds long" in pg.inner_text("#prog-error-msg")
+    assert pg.is_visible("#again-btn") and pg.is_hidden("#cancel-btn")
+    assert pg.locator("#stage-list li[data-status='error']").count() == 1
+    shot(pg, "desktop-error")
+    pg.click("#again-btn")
+    assert pg.is_visible("#drop")
+
+
+def test_local_mode_can_cancel_a_running_job(desktop, local_url):
+    if not VIDEO.exists():
+        pytest.skip("run scripts/make_synthetic_room.py first")
+    pg = desktop.page
+    pg.goto(local_url)
+    pg.set_input_files("#file", str(VIDEO))
+    pg.wait_for_selector("#stage-list li[data-status='running']", timeout=60000)
+    pg.click("#cancel-btn")
+    pg.wait_for_selector("#drop", state="visible", timeout=30000)
+
+
+def test_local_mode_end_to_end_with_live_progress(desktop, local_url):
+    """Drop the synthetic video: every stage reports, then the scene opens by itself."""
+    if os.environ.get("VID3D_E2E") != "1":
+        pytest.skip("set VID3D_E2E=1 (about 3 minutes of real processing)")
+    if not VIDEO.exists():
+        pytest.skip("run scripts/make_synthetic_room.py first")
+    pg = desktop.page
+    snaps = []
+    pg.on("response", lambda r: re.search(r"/api/jobs/[0-9a-f]{12}$", r.url) and snaps.append(r.json()))
+    pg.goto(local_url)
+    pg.click("#advanced summary")
+    pg.fill("#opt-camera", "1.5")
+    pg.set_input_files("#file", str(VIDEO))
+    pg.wait_for_selector("#stage-list li", timeout=30000)
+    shot(pg, "desktop-progress")
+    pg.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=480000)
+
+    seen = {n: {s["stages"][n - 1]["status"] for s in snaps} for n in range(1, 7)}
+    for n in (1, 2, 3):
+        assert "running" in seen[n], f"stage {n} was never seen running: {seen}"
+    final = snaps[-1]
+    assert final["state"] == "done" and all(s["status"] == "done" for s in final["stages"])
+    details = " | ".join(s["detail"] for s in final["stages"])
+    assert re.search(r"\d+ frames kept", details) and re.search(r"\d+ of \d+ frames placed", details)
+    assert re.search(r"frame \d+ of \d+", details) and re.search(r"[\d,]+ points", details)
+    assert [s["elapsed"] for s in snaps] == sorted(s["elapsed"] for s in snaps) and final["elapsed"] > 30
+    assert re.fullmatch(r"\d\.\d\d × \d\.\d\d m", pg.inner_text("#dims"))
+    assert desktop.errors == []

@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "playwright"]
 
 [project.scripts]
 vid3d = "vid3d.cli:main"
