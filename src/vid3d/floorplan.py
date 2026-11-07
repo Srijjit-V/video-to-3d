@@ -53,7 +53,13 @@ def _extent(coord: np.ndarray) -> tuple[float, float]:
     bins = np.arange(lo - CELL, hi + 2 * CELL, CELL)
     h, e = np.histogram(coord, bins)
     strong = np.nonzero(h >= 0.3 * h.max())[0]
-    return float(e[strong[0]] + CELL / 2), float(e[strong[-1]] + CELL / 2)
+    lo_s, hi_s = float(e[strong[0]] + CELL / 2), float(e[strong[-1]] + CELL / 2)
+    # When one wall has far more points than the other (or is blurry), the strong peaks sit on a single
+    # wall. Then the trimmed spread of the points is a better answer than refusing to measure.
+    p_lo, p_hi = np.percentile(coord, [1, 99])
+    if hi_s - lo_s < 0.5 * (p_hi - p_lo):
+        return float(p_lo), float(p_hi)
+    return lo_s, hi_s
 
 
 def palette(points: np.ndarray, colors: np.ndarray, room: dict, room_height: float | None) -> dict:

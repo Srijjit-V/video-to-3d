@@ -150,7 +150,7 @@ def serve_server(tmp_path):
 
 def test_viewer_server_serves_run_and_blocks_paths_outside_it(view_server):
     assert json.loads(view_server.call("/run/scene.json")[1]) == {"ok": 1}
-    assert b"vid3d" in view_server.call("/index.html")[1].lower()
+    assert b"video-to-3d" in view_server.call("/index.html")[1].lower()
     assert view_server.call("/run/../secret.txt")[0] >= 400
     assert view_server.call("/run/%2e%2e/secret.txt")[0] >= 400
 
