@@ -26,7 +26,18 @@ VIDEO = ROOT / "samples" / "synthetic_room.mp4"
 CHROME_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"]
 
 
+VERCEL_HEADERS = {h["key"]: h["value"] for h in next(r for r in json.loads((ROOT / "vercel.json").read_text())["headers"]
+                                                    if r["source"] == "/(.*)")["headers"]}
+
+
 class Quiet(http.server.SimpleHTTPRequestHandler):
+    """Static files with the headers vercel.json sends, so the strict CSP is enforced in these tests."""
+
+    def end_headers(self):
+        for k, v in VERCEL_HEADERS.items():
+            self.send_header(k, v)
+        super().end_headers()
+
     def log_message(self, *a):
         pass
 
@@ -95,6 +106,16 @@ def phone(playwright_browser):
     p.close()
 
 
+def until(page, expr, timeout=20000):
+    """Wait for a JS expression to be truthy. Polls with evaluate: wait_for_function uses eval, which our CSP blocks."""
+    end = time.time() + timeout / 1000
+    while time.time() < end:
+        if page.evaluate(expr):
+            return
+        page.wait_for_timeout(250)
+    raise AssertionError(f"timed out waiting for: {expr}")
+
+
 def shot(page, name):
     if os.environ.get("VID3D_SHOTS") == "1":
         SHOTS.mkdir(parents=True, exist_ok=True)
@@ -104,7 +125,7 @@ def shot(page, name):
 def open_sample(pg, url):
     pg.page.goto(url)
     pg.page.click("#sample-btn")
-    pg.page.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=20000)
+    until(pg.page, "window.__vid3d && window.__vid3d.meta", 20000)
     pg.page.wait_for_timeout(600)  # let the first frames render
 
 
@@ -135,13 +156,14 @@ def points_on_screen(pg, box):
 def test_hosted_start_screen_is_honest_about_what_it_can_do(desktop, hosted_url):
     pg = desktop.page
     pg.goto(hosted_url)
-    pg.wait_for_function("document.documentElement.dataset.mode === 'hosted'")
+    until(pg, "document.documentElement.dataset.mode === 'hosted'")
     assert "can't process videos" in pg.inner_text("#mode-note")
     assert pg.is_visible("#sample-btn") and pg.is_visible("#drop")
     assert not pg.is_visible("#advanced")  # no processing, so no processing options
     assert "GitHub.com/Srijjit-V/video-to-3d".lower() in pg.get_attribute("a.link", "href").lower()
     shot(pg, "desktop-landing")
     assert desktop.errors == []
+    assert "script-src 'self'" in VERCEL_HEADERS["Content-Security-Policy"]
 
 
 def test_hosted_sample_loads_colour_modes_picker_and_measure_work(desktop, hosted_url):
@@ -198,7 +220,7 @@ def test_hosted_opens_dropped_cloud_and_scene_files(desktop, hosted_url):
     pg = desktop.page
     pg.goto(hosted_url)
     pg.set_input_files("#file", [str(VIEWER / "sample" / n) for n in ("cloud.ply", "scene.json", "floorplan.png")])
-    pg.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=20000)
+    until(pg, "window.__vid3d && window.__vid3d.meta", 20000)
     assert re.fullmatch(r"\d\.\d\d × \d\.\d\d m", pg.inner_text("#dims"))
     pg.wait_for_selector("#plan", state="visible")
     assert desktop.errors == []
@@ -208,7 +230,7 @@ def test_hosted_opens_a_lone_cloud_with_a_clear_limitation(desktop, hosted_url):
     pg = desktop.page
     pg.goto(hosted_url)
     pg.set_input_files("#file", [str(VIEWER / "sample" / "cloud.ply")])
-    pg.wait_for_function("window.__vid3d && window.__vid3d.meta")
+    until(pg, "window.__vid3d && window.__vid3d.meta")
     assert "No scene.json" in pg.inner_text("#warnings")
     assert pg.is_hidden("#plan-wrap")
 
@@ -263,16 +285,18 @@ def test_phone_layout_fits_and_targets_are_big_enough(phone, hosted_url):
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390  # no sideways scroll
     shot(pg, "phone-landing")
     pg.click("#sample-btn")
-    pg.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=20000)
+    until(pg, "window.__vid3d && window.__vid3d.meta", 20000)
     pg.wait_for_timeout(600)
     assert pg.is_hidden("#panel")  # the details sheet starts closed on a phone
     boxes = pg.evaluate("[...document.querySelectorAll('.toolbar .btn')].map(b => { const r = b.getBoundingClientRect(); return [r.width, r.height]; })")
     assert all(h >= 44 for _, h in boxes)
     bar = pg.evaluate("(() => { const r = document.querySelector('.toolbar').getBoundingClientRect(); return [r.left, r.right]; })()")
     assert bar[0] >= 0 and bar[1] <= 390
+    assert pg.evaluate("(() => { const t = document.querySelector('.toolbar'); return t.scrollWidth <= t.clientWidth + 1; })()"), "toolbar buttons are clipped"
     shot(pg, "phone-scene")
     pg.tap("#tool-panel")
     assert pg.is_visible("#panel")
+    pg.wait_for_timeout(700)  # let the panel's fade-in finish before measuring and screenshotting
     sizes = pg.evaluate("[...document.querySelectorAll('#panel button, #panel select, #panel input')].filter(e => e.offsetParent && e.type !== 'checkbox' && e.type !== 'range').map(e => e.getBoundingClientRect().height)")
     assert sizes and min(sizes) >= 43.5
     shot(pg, "phone-details")
@@ -298,7 +322,7 @@ def short_video(path, seconds=1):
 def test_local_mode_offers_upload_and_advanced_options(desktop, local_url):
     pg = desktop.page
     pg.goto(local_url)
-    pg.wait_for_function("document.documentElement.dataset.mode === 'local'")
+    until(pg, "document.documentElement.dataset.mode === 'local'")
     assert "Drop a video here" in pg.inner_text("#drop")
     pg.click("#advanced summary")
     assert all(pg.is_visible(i) for i in ("#opt-camera", "#opt-ceiling", "#opt-fov"))
@@ -315,6 +339,7 @@ def test_local_mode_explains_a_too_short_video(desktop, local_url, tmp_path):
     assert "only 1.0 seconds long" in pg.inner_text("#prog-error-msg")
     assert pg.is_visible("#again-btn") and pg.is_hidden("#cancel-btn")
     assert pg.locator("#stage-list li[data-status='error']").count() == 1
+    assert "Stopped at stage 1 of 6" in pg.inner_text("#prog-summary")
     shot(pg, "desktop-error")
     pg.click("#again-btn")
     assert pg.is_visible("#drop")
@@ -345,11 +370,13 @@ def test_local_mode_end_to_end_with_live_progress(desktop, local_url):
     pg.fill("#opt-camera", "1.5")
     pg.set_input_files("#file", str(VIDEO))
     pg.wait_for_selector("#stage-list li", timeout=30000)
+    # screenshot once the AI-depth stage shows live frame counts (the card has finished fading in by then)
+    until(pg, "(document.querySelector('#stage-list li:nth-child(3) .stage-detail')?.textContent || '').includes('frame')", 300000)
     shot(pg, "desktop-progress")
-    pg.wait_for_function("window.__vid3d && window.__vid3d.meta", timeout=480000)
+    until(pg, "window.__vid3d && window.__vid3d.meta", 480000)
 
     seen = {n: {s["stages"][n - 1]["status"] for s in snaps} for n in range(1, 7)}
-    for n in (1, 2, 3):
+    for n in (2, 3):  # stage 1 takes under a second: faster than the page polls
         assert "running" in seen[n], f"stage {n} was never seen running: {seen}"
     final = snaps[-1]
     assert final["state"] == "done" and all(s["status"] == "done" for s in final["stages"])

@@ -186,6 +186,7 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--mint); m
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); scrollbar-width: none;
 }
 .toolbar::-webkit-scrollbar { display: none; }
+.sm { display: none; }
 .toolbar .btn { flex: none; padding: 0 16px; }
 
 .panel {
@@ -238,8 +239,11 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--mint); m
 @media (max-width: 720px) {
   .panel { left: 0; right: 0; width: auto; max-width: none; top: auto; bottom: calc(72px + var(--safe-b)); max-height: 56dvh; border-radius: var(--radius) var(--radius) 0 0; border-bottom: 0; }
   .legend { bottom: auto; top: calc(var(--header-h) + var(--safe-t) + 48px); right: 12px; width: 170px; }
-  .toolbar { gap: 6px; }
-  .toolbar .btn { padding: 0 14px; }
+  .toolbar { gap: 4px; padding: 6px; }
+  .toolbar .btn { padding: 0 12px; font-size: 13px; }
+  .lg { display: none; }
+  .sm { display: inline; }
+  .panel { background: rgb(22 26 34 / 0.97); }
   .hint-bar { display: none; }
   .screen { align-items: start; }
   .progress-card { padding: 20px; }

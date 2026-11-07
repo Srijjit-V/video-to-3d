@@ -140,7 +140,7 @@ async function startJob(file) {
     }, (f) => ($("prog-summary").textContent = `Uploading… ${Math.round(f * 100)}%`));
     job = id;
     await poll(id);
-  } catch (e) { stopWithError("That didn't work", e.message); }
+  } catch (e) { stopWithError("That didn't work", e.message, [], "Couldn't start"); }
 }
 
 async function poll(id) {
@@ -150,14 +150,18 @@ async function poll(id) {
     tick(Date.now() - s.elapsed * 1000);
     renderJob(s);
     if (s.state === "done") { clearInterval(ticker); return loadUrls(`jobs/${id}`); }
-    if (s.state === "error") return stopWithError("That didn't work", s.error, s.log);
+    if (s.state === "error") {
+      const at = s.stages.find((x) => x.status === "error");
+      return stopWithError("That didn't work", s.error, s.log, at ? `Stopped at stage ${at.n} of 6: ${at.label}` : "Stopped");
+    }
     if (s.state === "cancelled") { clearInterval(ticker); return show("start"); }
     await new Promise((r) => setTimeout(r, 800));
   }
 }
 
-function stopWithError(title, message, log = []) {
+function stopWithError(title, message, log = [], summary = "Stopped") {
   clearInterval(ticker);
+  $("prog-summary").textContent = summary;
   $("prog-error-title").textContent = title;
   $("prog-error-msg").textContent = message || "Something went wrong.";
   $("prog-log").textContent = log.join("\n");
