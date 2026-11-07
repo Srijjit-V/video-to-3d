@@ -79,5 +79,6 @@ def test_fuse_drops_points_seen_by_only_one_frame():
     P = np.concatenate([good, lone]).astype(np.float32)
     C = np.full((15, 3), 100, np.uint8)
     F = np.r_[np.arange(10) % 2, np.zeros(5)].astype(np.int32)
-    out, _ = fuse(P, C, F, voxel=0.5, min_views=2)
+    out, _, views = fuse(P, C, F, voxel=0.5, min_views=2)
     assert len(out) == 1 and np.allclose(out[0], 0)
+    assert views.tolist() == [2]  # the surviving point was seen by frames 0 and 1

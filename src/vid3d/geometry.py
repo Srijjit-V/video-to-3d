@@ -52,6 +52,7 @@ def backproject(view: View, depth: np.ndarray, rgb: np.ndarray, stride: int = 4,
 
 def fuse(points: np.ndarray, colors: np.ndarray, frame_ids: np.ndarray, voxel: float, min_views: int = 2):
     """Voxel-average the cloud, keeping only voxels seen from >= min_views frames.
+    Returns points, colours and, per point, how many frames saw it.
 
     Requiring agreement between frames removes most single-frame depth errors.
     """
@@ -69,7 +70,7 @@ def fuse(points: np.ndarray, colors: np.ndarray, frame_ids: np.ndarray, voxel: f
     P = np.stack([np.bincount(inv, points[:, i], len(uniq)) for i in range(3)], 1) / cnt[:, None]
     C = np.stack([np.bincount(inv, colors[:, i], len(uniq)) for i in range(3)], 1) / cnt[:, None]
     keep = views_per_voxel >= min_views
-    return P[keep].astype(np.float32), C[keep].astype(np.uint8)
+    return P[keep].astype(np.float32), C[keep].astype(np.uint8), np.minimum(views_per_voxel[keep], 255).astype(np.uint8)
 
 
 def ransac_plane(pts, thresh, iters=400, normal_hint=None, max_angle_deg=25.0, seed=0):

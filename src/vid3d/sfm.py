@@ -140,4 +140,8 @@ def run_sfm(frames_dir: Path, work_dir: Path, fov_deg: float = 70.0) -> dict:
 
 
 if __name__ == "__main__":
-    run_sfm(Path(sys.argv[1]), Path(sys.argv[2]), float(sys.argv[3]) if len(sys.argv) > 3 else 70.0)
+    try:
+        run_sfm(Path(sys.argv[1]), Path(sys.argv[2]), float(sys.argv[3]) if len(sys.argv) > 3 else 70.0)
+    except RuntimeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(3)

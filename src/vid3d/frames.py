@@ -8,6 +8,9 @@ import cv2
 import numpy as np
 
 
+MIN_SECONDS = 3.0  # shorter clips don't move enough to solve the camera path
+
+
 def sharpness(img: np.ndarray) -> float:
     """Variance of the Laplacian: higher means less motion blur."""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -26,8 +29,12 @@ def extract_frames(video_path: Path, out_dir: Path, target: int = 80, max_side: 
     """Split the video into `target` equal windows and keep the sharpest frame of each."""
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        raise RuntimeError(f"Could not open video: {video_path}")
+        raise RuntimeError("That file could not be opened as a video. Try an .mp4 or .mov file.")
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    seconds = total / (cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    if 0 < total and seconds < MIN_SECONDS:
+        raise RuntimeError(f"The video is only {seconds:.1f} seconds long. Film at least {MIN_SECONDS:.0f} seconds "
+                           "(10 to 30 is best), walking slowly around the room.")
     window = max(1, -(-total // target)) if total > 0 else 5  # round up: never exceed target
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -60,5 +67,5 @@ def extract_frames(video_path: Path, out_dir: Path, target: int = 80, max_side: 
     cap.release()
 
     if len(saved) < 10:
-        raise RuntimeError(f"Only {len(saved)} frames extracted; need a longer video.")
+        raise RuntimeError(f"Only {len(saved)} usable frames were found. Try a longer video with steady, sharp footage.")
     return saved

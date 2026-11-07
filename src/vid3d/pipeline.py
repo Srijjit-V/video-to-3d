@@ -12,7 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import floorplan
+from . import color, floorplan
 from .depth import DepthModel, align_disparity, metric_depth
 from .frames import extract_frames
 from .geometry import View, backproject, find_floor, floor_frame, fuse, yaw_align
@@ -35,16 +35,23 @@ def load_views(npz_path: Path):
     return views, list(d["k1"]), obs
 
 
-def write_ply(path: Path, pts: np.ndarray, rgb: np.ndarray) -> None:
-    rec = np.empty(len(pts), dtype=[("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
-                                    ("r", "u1"), ("g", "u1"), ("b", "u1")])
+def write_ply(path: Path, pts: np.ndarray, rgb: np.ndarray, views: np.ndarray | None = None) -> None:
+    """Binary little-endian PLY; `views` (frames that saw each point) is written as an extra property."""
+    fields = [("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("r", "u1"), ("g", "u1"), ("b", "u1")]
+    if views is not None:
+        fields.append(("views", "u1"))
+    rec = np.empty(len(pts), dtype=fields)
     rec["x"], rec["y"], rec["z"] = pts.T
     rec["r"], rec["g"], rec["b"] = rgb.T
+    if views is not None:
+        rec["views"] = views
     header = (
         "ply\nformat binary_little_endian 1.0\n"
         f"element vertex {len(pts)}\n"
         "property float x\nproperty float y\nproperty float z\n"
-        "property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n"
+        "property uchar red\nproperty uchar green\nproperty uchar blue\n"
+        + ("property uchar views\n" if views is not None else "")
+        + "end_header\n"
     )
     with open(path, "wb") as f:
         f.write(header.encode())
@@ -58,25 +65,33 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
     frames_dir, work = out / "frames", out / "work"
 
     log(f"[1/6] extracting ~{n_frames} sharp frames")
-    extract_frames(video, frames_dir, target=n_frames)
+    kept = extract_frames(video, frames_dir, target=n_frames)
+    log(f"      {len(kept)} frames kept")
 
     log("[2/6] solving camera path with COLMAP (separate process)")
     # -P / PYTHONSAFEPATH: don't add the current folder to the import path, so a
     # stray file there (e.g. a "numpy.py") can't be imported in place of the real one.
     src_dir = Path(__file__).resolve().parents[1]
     env = dict(os.environ, PYTHONPATH=str(src_dir), PYTHONSAFEPATH="1")
-    subprocess.run([sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()),
-                    str(fov)], check=True, env=env, cwd=src_dir)
+    sfm = subprocess.run([sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()),
+                          str(fov)], env=env, cwd=src_dir, stderr=subprocess.PIPE, text=True)
+    if sfm.returncode != 0:
+        # sfm.py exits 3 with an "error:" line when it has a message meant for people.
+        said = [l[6:] for l in sfm.stderr.splitlines() if l.startswith("error: ")]
+        raise RuntimeError(said[-1] if said else "The camera-path step crashed. Try a different video.")
     sfm_stats = json.loads((work / "sfm_stats.json").read_text())
     views, k1s, obs = load_views(work / "sfm.npz")
+    log(f"      {sfm_stats['frames_registered']}/{sfm_stats['frames_total']} frames placed")
 
     log(f"[3/6] AI depth on {len(views)} frames")
     model = DepthModel()
     log(f"      device: {model.device}")
     all_p, all_c, all_f, fits = [], [], [], []
-    for i, (v, k1, o) in enumerate(zip(views, k1s, obs)):
-        rgb = cv2.cvtColor(cv2.imread(str(frames_dir / v.name)), cv2.COLOR_BGR2RGB)
-        disp = model.disparity(rgb)
+    read = lambda v: cv2.cvtColor(cv2.imread(str(frames_dir / v.name)), cv2.COLOR_BGR2RGB)
+    gains = color.exposure_gains([color.frame_luma(read(v)) for v in views])
+    for i, (v, k1, o, gain) in enumerate(zip(views, k1s, obs, gains)):
+        rgb = read(v)
+        disp = model.disparity(rgb)  # depth uses the untouched frame
         u = np.clip(o[:, 0].astype(int), 0, disp.shape[1] - 1)
         vv = np.clip(o[:, 1].astype(int), 0, disp.shape[0] - 1)
         fit = align_disparity(disp[vv, u], o[:, 2])
@@ -85,21 +100,21 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
         a, b, inl = fit
         z = o[:, 2]
         depth = metric_depth(disp, a, b, 0.5 * z.min(), 2.0 * np.percentile(z, 98))
-        p, c = backproject(v, depth, rgb, stride=stride, k1=k1)
+        p, c = backproject(v, depth, color.normalize_frame(rgb, gain), stride=stride, k1=k1)
         all_p.append(p)
         all_c.append(c)
         all_f.append(np.full(len(p), i, np.int32))
         fits.append(inl)
-        if (i + 1) % 10 == 0:
-            log(f"      {i + 1}/{len(views)}")
+        log(f"      {i + 1}/{len(views)}")
     del model
     if not all_p:
-        raise RuntimeError("Depth alignment failed on every frame.")
+        raise RuntimeError("The AI depth could not be matched to the camera path on any frame. "
+                           "Try a video with more texture and steady lighting.")
 
     log("[4/6] fusing into one point cloud")
     P, C, F = np.concatenate(all_p), np.concatenate(all_c), np.concatenate(all_f)
     median_z = float(np.median(np.concatenate([o[:, 2] for o in obs])))
-    P, C = fuse(P, C, F, voxel=median_z / 200, min_views=2)
+    P, C, V = fuse(P, C, F, voxel=median_z / 200, min_views=2)
     log(f"      {len(P):,} points")
 
     log("[5/6] finding the floor and real-world scale")
@@ -129,7 +144,7 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
     log("[6/6] floor plan + export")
     room = floorplan.analyze(P, room_h) or {"incomplete": True, "reason": "Too few wall points to measure the room."}
     floorplan.render(P, C, cams_m, room, room_h, out / "floorplan.png")
-    write_ply(out / "cloud.ply", P, C)
+    write_ply(out / "cloud.ply", P, C, V)
 
     scene = {
         "video": str(video),
@@ -142,6 +157,7 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
         "points": int(len(P)),
         "cameras": np.round(cams_m, 3).tolist(),
         "room": room,
+        "palette": floorplan.palette(P, C, room, room_h),
         "seconds": round(time.time() - t0, 1),
     }
     scene["warnings"] = quality_warnings(scene)

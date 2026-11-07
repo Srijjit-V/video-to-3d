@@ -83,8 +83,11 @@ def main(argv=None) -> None:
         from .pipeline import process
 
         out = args.out or Path("runs") / args.video.stem
-        process(args.video, out, n_frames=args.frames, camera_height=args.camera_height,
-                ceiling_height=args.ceiling_height, stride=args.stride, fov=args.fov)
+        try:
+            process(args.video, out, n_frames=args.frames, camera_height=args.camera_height,
+                    ceiling_height=args.ceiling_height, stride=args.stride, fov=args.fov)
+        except RuntimeError as e:
+            raise SystemExit(f"error: {e}")
         print(f"\nView it:  vid3d view {out}")
     else:
         view(args.run, args.port, not args.no_browser)

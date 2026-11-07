@@ -49,6 +49,23 @@ def test_extract_frames_never_exceeds_target(tmp_path, total, target):
     assert 0.6 * target <= len(frames) <= target
 
 
+def test_extract_frames_refuses_a_too_short_clip_in_plain_words(tmp_path):
+    video = tmp_path / "short.mp4"
+    vw = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 30, (160, 120))
+    for _ in range(30):  # one second
+        vw.write(np.zeros((120, 160, 3), np.uint8))
+    vw.release()
+    with pytest.raises(RuntimeError, match="only 1.0 seconds long"):
+        extract_frames(video, tmp_path / "frames", target=20)
+
+
+def test_extract_frames_says_so_when_the_file_is_not_a_video(tmp_path):
+    bad = tmp_path / "notes.mp4"
+    bad.write_text("not a video")
+    with pytest.raises(RuntimeError, match="could not be opened as a video"):
+        extract_frames(bad, tmp_path / "frames")
+
+
 def test_write_ply_header_and_size(tmp_path):
     p = tmp_path / "c.ply"
     write_ply(p, np.zeros((7, 3), np.float32), np.zeros((7, 3), np.uint8))

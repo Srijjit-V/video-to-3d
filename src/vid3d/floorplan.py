@@ -8,6 +8,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from .color import dominant_colors
 from .geometry import yaw_align
 
 CELL = 0.05  # metres per grid cell
@@ -53,6 +54,22 @@ def _extent(coord: np.ndarray) -> tuple[float, float]:
     h, e = np.histogram(coord, bins)
     strong = np.nonzero(h >= 0.3 * h.max())[0]
     return float(e[strong[0]] + CELL / 2), float(e[strong[-1]] + CELL / 2)
+
+
+def palette(points: np.ndarray, colors: np.ndarray, room: dict, room_height: float | None) -> dict:
+    """Dominant colours of the walls, floor and ceiling, taken from the points on each surface."""
+    y = points[:, 1]
+    out = {"floor": dominant_colors(colors[np.abs(y) < 0.06]),
+           "ceiling": dominant_colors(colors[np.abs(y - room_height) < 0.08]) if room_height else []}
+    walls = []
+    if room.get("rect_m"):
+        x0, z0, x1, z1 = room["rect_m"]
+        top = (room_height - 0.2) if room_height else 2.1
+        near = np.minimum.reduce([np.abs(points[:, 0] - x0), np.abs(points[:, 0] - x1),
+                                  np.abs(points[:, 2] - z0), np.abs(points[:, 2] - z1)]) < 0.15
+        walls = dominant_colors(colors[near & (y > 0.3) & (y < top)])
+    out["walls"] = walls
+    return out
 
 
 def analyze(points: np.ndarray, room_height: float | None) -> dict:
