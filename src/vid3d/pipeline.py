@@ -126,7 +126,8 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
         scale, method = ceiling_height / floor.ceiling_height_raw, f"ceiling height = {ceiling_height} m"
     else:
         h = camera_height or DEFAULT_CAMERA_HEIGHT_M
-        scale, method = h / floor.cam_height_raw, f"camera held at ~{h} m above floor"
+        method = f"camera height given: {h} m" if camera_height else f"camera held at ~{h} m above floor (assumed)"
+        scale = h / floor.cam_height_raw
         if ceiling_height:
             method += " (ceiling not detected, so --ceiling-height was ignored)"
 
@@ -183,7 +184,7 @@ def quality_warnings(scene: dict) -> list[str]:
         w.append("AI depth could not be matched on many frames; the model may be patchy.")
     if scene["room"].get("incomplete"):
         w.append(scene["room"]["reason"])
-    if "camera held" in scene["scale_method"]:
+    if "(assumed)" in scene["scale_method"]:
         w.append("Real-world scale is a guess from typical phone height (about ±5–10%). "
                  "Use --camera-height, --ceiling-height or calibrate in the viewer to tighten it.")
     return w

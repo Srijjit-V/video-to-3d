@@ -1,4 +1,4 @@
-"""Command line: `vid3d process VIDEO` and `vid3d view RUN_DIR`."""
+"""Command line: `vid3d process VIDEO`, `vid3d view RUN_DIR` and `vid3d serve`."""
 
 from __future__ import annotations
 
@@ -8,55 +8,30 @@ import http.server
 import webbrowser
 from pathlib import Path
 
-# shortcut: needs a source checkout (pip install -e .); ship viewer/ as package data to lift this.
-VIEWER_DIR = Path(__file__).resolve().parents[2] / "viewer"
+from .server import Jobs, ServeHandler, ViewHandler
 
 
-class _Handler(http.server.SimpleHTTPRequestHandler):
-    """Serves the viewer at / and the run folder at /run/."""
-
-    def __init__(self, *a, run_dir: Path, **kw):
-        self.run_dir = run_dir
-        super().__init__(*a, directory=str(VIEWER_DIR), **kw)
-
-    def _host_ok(self) -> bool:
-        # Block DNS rebinding: a web page on evil.com that re-points its name at
-        # 127.0.0.1 still sends "Host: evil.com", so only accept local names.
-        port = self.server.server_address[1]
-        return self.headers.get("Host", "") in {f"127.0.0.1:{port}", f"localhost:{port}"}
-
-    def send_head(self):
-        if not self._host_ok():
-            self.send_error(421, "Misdirected Request")
-            return None
-        return super().send_head()
-
-    def translate_path(self, path):
-        clean = path.split("?", 1)[0].split("#", 1)[0]
-        if clean.startswith("/run/"):
-            target = (self.run_dir / clean[len("/run/"):]).resolve()
-            if self.run_dir.resolve() in target.parents:
-                return str(target)
-            return str(self.run_dir / "__forbidden__")
-        return super().translate_path(path)
-
-    def log_message(self, *a):
-        pass
-
-
-def view(run_dir: Path, port: int, open_browser: bool = True) -> None:
-    if not (run_dir / "cloud.ply").exists():
-        raise SystemExit(f"No cloud.ply in {run_dir}. Run `vid3d process` first.")
-    handler = functools.partial(_Handler, run_dir=run_dir)
+def _run(handler, port: int, label: str, open_browser: bool) -> None:
     server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
     url = f"http://127.0.0.1:{port}/index.html"
-    print(f"Viewer running at {url}  (Ctrl+C to stop)")
+    print(f"{label} at {url}  (Ctrl+C to stop)")
     if open_browser:
         webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+
+
+def view(run_dir: Path, port: int, open_browser: bool = True) -> None:
+    if not (run_dir / "cloud.ply").exists():
+        raise SystemExit(f"No cloud.ply in {run_dir}. Run `vid3d process` first.")
+    _run(functools.partial(ViewHandler, run_dir=run_dir), port, "Viewer running", open_browser)
+
+
+def serve(runs_dir: Path, port: int, open_browser: bool = True) -> None:
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    _run(functools.partial(ServeHandler, jobs=Jobs(runs_dir.resolve())), port, "Drop a video at", open_browser)
 
 
 def main(argv=None) -> None:
@@ -78,6 +53,11 @@ def main(argv=None) -> None:
     v.add_argument("--port", type=int, default=8765)
     v.add_argument("--no-browser", action="store_true")
 
+    sv = sub.add_parser("serve", help="open the viewer, drop a video in the browser and watch it process")
+    sv.add_argument("--runs", type=Path, default=Path("runs/web"), help="where uploaded videos and results are kept")
+    sv.add_argument("--port", type=int, default=8765)
+    sv.add_argument("--no-browser", action="store_true")
+
     args = ap.parse_args(argv)
     if args.cmd == "process":
         from .pipeline import process
@@ -89,6 +69,8 @@ def main(argv=None) -> None:
         except RuntimeError as e:
             raise SystemExit(f"error: {e}")
         print(f"\nView it:  vid3d view {out}")
+    elif args.cmd == "serve":
+        serve(args.runs, args.port, not args.no_browser)
     else:
         view(args.run, args.port, not args.no_browser)
 

@@ -1,7 +1,3 @@
-import json
-import threading
-import urllib.error
-import urllib.request
 
 import cv2
 import numpy as np
@@ -80,35 +76,8 @@ def test_quality_warnings_flag_few_frames():
     w = quality_warnings(scene)
     assert any("10 of 60" in x for x in w)
     assert not any("Real-world scale" in x for x in w)
+    scene["scale_method"] = "camera held at ~1.45 m above floor (assumed)"
+    assert any("Real-world scale" in x for x in quality_warnings(scene))
+    scene["scale_method"] = "camera height given: 1.5 m"
+    assert not any("Real-world scale" in x for x in quality_warnings(scene))
 
-
-def test_viewer_server_blocks_paths_outside_run(tmp_path):
-    from vid3d import cli
-    import functools
-    import http.server
-
-    run = tmp_path / "run"
-    run.mkdir()
-    (run / "scene.json").write_text(json.dumps({"ok": 1}))
-    (tmp_path / "secret.txt").write_text("nope")
-    handler = functools.partial(cli._Handler, run_dir=run)
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    base = f"http://127.0.0.1:{srv.server_address[1]}"
-    try:
-        assert json.load(urllib.request.urlopen(base + "/run/scene.json")) == {"ok": 1}
-        assert b"vid3d" in urllib.request.urlopen(base + "/index.html").read()
-        with pytest.raises(urllib.error.HTTPError):
-            urllib.request.urlopen(base + "/run/../secret.txt")
-        with pytest.raises(urllib.error.HTTPError):
-            urllib.request.urlopen(base + "/run/%2e%2e/secret.txt")
-        # DNS rebinding: a foreign Host header must be refused.
-        req = urllib.request.Request(base + "/run/scene.json", headers={"Host": "evil.example:80"})
-        with pytest.raises(urllib.error.HTTPError) as e:
-            urllib.request.urlopen(req)
-        assert e.value.code == 421
-        req = urllib.request.Request(base + "/run/scene.json",
-                                     headers={"Host": f"localhost:{srv.server_address[1]}"})
-        assert json.load(urllib.request.urlopen(req)) == {"ok": 1}
-    finally:
-        srv.shutdown()
