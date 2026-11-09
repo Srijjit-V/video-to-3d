@@ -11,7 +11,8 @@
 
 <p align="center">
   <a href="https://srijjit-v.github.io/video-to-3d/"><b>Open the live viewer</b></a> ·
-  <a href="#web-viewer">How to use it</a> ·
+  <a href="#run-it-on-your-mp4-video">Run it on your video</a> ·
+  <a href="#how-it-works-the-idea-in-plain-words">How it works</a> ·
   <a href="DESIGN.md">Design language</a>
 </p>
 
@@ -21,15 +22,88 @@
 
 ---
 
-Film a slow walk around a room. `video-to-3d` turns the video into:
+Film a slow walk around a room with your phone. `video-to-3d` turns that video into a 3D model you can spin around, measure and colour-pick, plus the room's size, a floor plan and its main colours.
 
-- a **3D point cloud** in real-world metres
-- a **room estimate**: length × width, height if the ceiling is visible, area in m² and ft²
-- a **top-down floor plan** image
-- the room's **real colours**: every point keeps the colour from the video, and a palette card lists the dominant wall, floor and ceiling colours
-- a **3D viewer** (in your browser) where you click two points to measure anything, pick a point to read its colour, recolour the cloud by height, distance or how many frames saw it, switch to top-down view, and calibrate against a known length (like a door)
+It is free, runs on your own computer, and needs no special camera and no account.
 
-Tested on an M2 MacBook Air with 8 GB of RAM. A 90-frame video takes about 3 minutes.
+## Run it on your mp4 video
+
+**What you need:** a computer with **Python 3.11** (tested on a MacBook with an Apple M2 chip; other computers are untested) and about **2 GB of free disk space**. The first run also downloads a ~100 MB AI model, so you need internet that once.
+
+### Step 1: Film the room
+- Walk **slowly** around the room for **10 to 30 seconds** and turn gradually. Fast spins ruin it.
+- Keep the **floor and the room's corners** in view, and walk a loop that ends where you started.
+- Use good light. Blank white walls, mirrors and windows are hard for it.
+- An **.mp4** or **.mov** file is fine (`.m4v`, `.webm`, `.avi` and `.mkv` work too).
+
+### Step 2: Install it (once)
+Open a terminal and run these three lines:
+```bash
+git clone https://github.com/Srijjit-V/video-to-3d.git
+cd video-to-3d
+python3.11 -m venv .venv && .venv/bin/pip install -e .
+```
+
+### Step 3: Run it on your video
+**The easy way (click and drop):**
+```bash
+.venv/bin/vid3d serve
+```
+A page opens in your browser. **Drop your mp4 on it.** You see a progress list for the six steps, with a cancel button. When it finishes (about 3 minutes), the 3D room opens by itself.
+
+**The command-line way:**
+```bash
+.venv/bin/vid3d process my_room.mp4     # makes the 3D model in runs/my_room/
+.venv/bin/vid3d view runs/my_room       # opens it in your browser
+```
+
+That's it. In the 3D room you can drag to spin it, click **Measure** and click two points to get a real distance, and click **Pick colour** to read any colour. More on that in [Web viewer](#web-viewer).
+
+**What you get** (in `runs/my_room/`): `cloud.ply` (the 3D dots; also opens in MeshLab, CloudCompare and Blender), `scene.json` (the room size, colours and warnings), and `floorplan.png`.
+
+**Good to know:** it prints the room as, for example, `room ≈ 5.0 x 4.05 m, area ≈ 20.25 m²`. If you know how high you held the phone, add `--camera-height 1.5` (in metres) for a more accurate size.
+
+## How it works (the idea in plain words)
+
+You judge distance because **each eye sees a slightly different picture**. A walk-through video is the same trick with hundreds of "eyes" spread along your path. The program works backwards from those pictures to the shape of the room.
+
+```
+your video
+   │  1. keep the sharpest pictures
+   ▼
+ ~80 sharp photos
+   │  2. find where the phone was for each photo
+   ▼
+ camera path
+   │  3. let an AI guess the distance of every pixel, then correct it
+   ▼
+ a depth for every photo
+   │  4. combine them into one cloud of coloured dots
+   ▼
+ 3D point cloud
+   │  5. find the floor and set the real-world size
+   │  6. straighten the walls, measure, draw the floor plan
+   ▼
+ size, floor plan, colours, 3D viewer
+```
+
+1. **Keep the sharpest pictures.** A video is about 30 pictures a second, and most are near-copies or blurry. It splits the video into equal slices and keeps the sharpest frame from each, about 80 in all.
+2. **Work out where you were standing.** It spots the same small details (the corner of a picture frame, a spot on the floor) in several photos. Because they sit in different places in each photo, geometry reveals where the camera was and which way it pointed. This uses [COLMAP](https://colmap.github.io/), a well-known free tool. The result is your walking path (the orange loop in the viewer). It compares every photo with every other photo so the loop closes properly and the room doesn't drift out of shape.
+3. **Guess how far away everything is.** An AI model ([Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2)) looks at each photo and estimates the distance of every pixel. It is good at shapes but not at true distances. Step 2 gives a few exact distances per photo, so the AI's guess is stretched to match them. The AI fills the gaps, and the geometry keeps it honest.
+4. **Combine everything into one 3D cloud.** Each pixel becomes a coloured dot in space. A dot is kept only if **at least two photos agree on it**, which throws away most mistakes. Each dot keeps the real colour from your video (after evening out the brightness between photos).
+5. **Find the floor and set the real size.** The floor is the big flat layer at the bottom. A plain video can't tell a big room from a small model of it, so the program assumes you held the phone about **1.45 m** above the floor. That turns the model's arbitrary units into metres. You can give it your real camera height, the ceiling height, or the length of something you know (like a door) to make it exact.
+6. **Straighten the walls and measure.** It rotates the room so the walls are square, measures from wall to wall, draws the floor plan, and finds the main wall, floor and ceiling colours.
+
+**It never pretends.** If the video can't support a measurement (too few photos matched, or only one side of the room was seen), it shows a plain-language warning instead of a wrong number.
+
+### If something goes wrong
+| What you see | What it means | What to do |
+|---|---|---|
+| "The video is only 1.0 seconds long" | Too short to work out depth | Film at least 3 seconds (10 to 30 is best) |
+| "Only 20 of 80 frames could be placed" | The camera path couldn't be solved for most of the video | Walk slower; avoid blank walls; keep more of the room's detail in view |
+| "Opposite walls were not both captured" | It saw only one side of the room | Walk so every wall appears at some point |
+| The size is a few percent off | The scale is a guess from phone height | Measure a door in the viewer and type its real length, or use `--camera-height` |
+| The first run is slow | It is downloading the AI model once | Wait; later runs are faster |
 
 ## Web viewer
 
@@ -51,61 +125,15 @@ The viewer in `viewer/` is a plain static site (no build step, no server code, t
 
 `vid3d serve` only listens on `127.0.0.1`, refuses other host names (DNS-rebinding protection) and requests from other sites, and runs one video at a time.
 
-## How it works
-
-```
-video ─► sharp frames ─► camera path (COLMAP) ─► AI depth per frame (Depth Anything V2)
-      ─► fuse into one cloud ─► find floor & scale ─► line up walls ─► floor plan + viewer
-```
-
-| Stage | What happens |
-|---|---|
-| 1. Frames | Keep the sharpest frame in each slice of the video |
-| 2. Camera path | COLMAP works out where the camera was for every frame, matching all frame pairs so the loop closes |
-| 3. Depth | AI depth per frame, fitted to COLMAP's exact points so all frames agree |
-| 4. Fuse | Merge into one cloud, keeping only points that at least 2 frames agree on |
-| 5. Scale | Find the floor; set metres from camera height, ceiling height, or your calibration |
-| 6. Floor plan | Line walls up with the axes and measure wall to wall |
-
-When the video can't support a measurement (too few frames placed, opposite walls
-not seen), the tool says so rather than printing a wrong number.
-
-## Quick start
-
-```bash
-git clone https://github.com/Srijjit-V/video-to-3d.git
-cd video-to-3d
-python3.11 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
-
-.venv/bin/vid3d process my_room.mp4        # writes runs/my_room/
-.venv/bin/vid3d view runs/my_room          # opens the viewer at http://127.0.0.1:8765
-```
-
-The first run downloads the Depth Anything V2 Small model (~100 MB) from Hugging Face.
-
-To use the browser upload instead of the command line: `.venv/bin/vid3d serve`, then drop a video on the page.
-
-**Options for `process`:** `--frames 80` (more = more detail, slower) ·
-`--camera-height 1.5` · `--ceiling-height 2.44` · `--fov 70` (~110 for ultra-wide) ·
-`--stride 4` (lower = denser cloud)
-
-**Output folder:** `cloud.ply` (also opens in MeshLab, CloudCompare, Blender) ·
-`scene.json` (room numbers, warnings, camera path) · `floorplan.png`
-
 ## Getting good numbers
 
-**Scale.** A plain video can't tell a room from a scale model, so by default the
-tool assumes you held the phone about 1.45 m off the floor (good to roughly ±5–10%).
-Tighten it, from best to good:
+**Scale.** By default the tool assumes the phone was about 1.45 m off the floor (good to roughly ±5 to 10%). To tighten it, from best to good:
 
 1. Calibrate in the viewer: measure a door (about 2.03 m) and type its real length.
 2. `--ceiling-height 2.44` if the ceiling is visible in the video.
 3. `--camera-height 1.5` if you know how high you held the phone.
 
-**Filming.** Walk slowly and turn gradually. Keep the floor and room corners in view.
-Walk a loop back to where you started. Blank white walls, mirrors and windows are hard;
-good light helps.
+**All the options for `process`:** `--frames 80` (more = more detail, slower) · `--camera-height 1.5` · `--ceiling-height 2.44` · `--fov 70` (about 110 for an ultra-wide lens) · `--stride 4` (lower = denser cloud).
 
 ## Accuracy
 
