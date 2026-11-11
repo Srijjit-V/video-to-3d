@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- `docs/demo.gif` (made by `scripts/make_readme_gif.py`): a short screen recording of the demo for the README.
 - Floor-plan export: "Download SVG" and "Download JSON" in the viewer, built in the browser from `scene.json`, scaled by calibration, ranges and confidence included, no file name.
 - Web viewer rebuilt as a standalone static site (`viewer/`, three.js bundled, no build step): landing with explanation and repo link, drag-and-drop, bundled sample room, phone layout, keyboard shortcuts.
 - `vid3d serve`: drop a video in the browser; live six-stage progress from the real pipeline log (frame counts, elapsed time), cancel, advanced options (camera height, ceiling height, field of view), plain-language errors.

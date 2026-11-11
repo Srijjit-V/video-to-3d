@@ -28,6 +28,8 @@ A phone video becomes a metric point cloud, a room size **with a 90% range and a
 > **Accuracy is only measured on a synthetic room.** Real-phone accuracy has not been measured yet ([protocol](docs/BENCHMARK.md)).
 > The error ranges come from a documented model ([docs/MATH.md](docs/MATH.md)), not from real-room statistics.
 
+<p align="center"><img src="docs/demo.gif" alt="Screen recording: orbit the demo room, colour by height, top-down view, then the bad-capture scan" width="720"></p>
+
 <p align="center"><img src="docs/screenshots/desktop-scene.png" alt="The viewer showing the sample room with its palette and measurements" width="760"></p>
 
 ## What it does
