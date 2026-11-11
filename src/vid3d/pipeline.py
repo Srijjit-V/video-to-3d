@@ -58,6 +58,11 @@ def write_ply(path: Path, pts: np.ndarray, rgb: np.ndarray, views: np.ndarray | 
         f.write(rec.tobytes())
 
 
+def video_label(video: Path) -> str:
+    """Only the file name goes into scene.json: a full path would leak the user's folders when it is shared."""
+    return str(video).replace("\\", "/").rsplit("/", 1)[-1]
+
+
 def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | None = None,
             ceiling_height: float | None = None, stride: int = 4, fov: float = 70.0) -> dict:
     t0 = time.time()
@@ -148,7 +153,7 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
     write_ply(out / "cloud.ply", P, C, V)
 
     scene = {
-        "video": str(video),
+        "video": video_label(video),
         "scale_method": method,
         "frames_extracted": sfm_stats["frames_total"],
         "frames_registered": sfm_stats["frames_registered"],

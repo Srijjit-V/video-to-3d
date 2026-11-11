@@ -9,6 +9,11 @@ import numpy as np
 
 
 MIN_SECONDS = 3.0  # shorter clips don't move enough to solve the camera path
+# Upper limits, checked from the file header before any frame is decoded and again
+# while decoding (a header can lie). A walk through one room never needs more.
+MAX_SECONDS = 300.0
+MAX_PIXELS = 3840 * 2160  # 4K
+MAX_FRAMES = 20_000
 
 
 def sharpness(img: np.ndarray) -> float:
@@ -32,6 +37,18 @@ def extract_frames(video_path: Path, out_dir: Path, target: int = 80, max_side: 
         raise RuntimeError("That file could not be opened as a video. Try an .mp4 or .mov file.")
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     seconds = total / (cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    width, height = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if width * height > MAX_PIXELS:
+        cap.release()
+        raise RuntimeError(f"The video frames are too large ({width}x{height}). The limit is 4K (3840x2160); "
+                           "record at a lower resolution.")
+    if seconds > MAX_SECONDS:
+        cap.release()
+        raise RuntimeError(f"The video is {seconds:.0f} seconds long, longer than the {MAX_SECONDS:.0f} second limit. "
+                           "Film a slow 10 to 30 second walk.")
+    if total > MAX_FRAMES:
+        cap.release()
+        raise RuntimeError(f"The video has more than {MAX_FRAMES} frames. Use a shorter clip.")
     if 0 < total and seconds < MIN_SECONDS:
         raise RuntimeError(f"The video is only {seconds:.1f} seconds long. Film at least {MIN_SECONDS:.0f} seconds "
                            "(10 to 30 is best), walking slowly around the room.")
@@ -56,6 +73,9 @@ def extract_frames(video_path: Path, out_dir: Path, target: int = 80, max_side: 
         ok, frame = cap.read()
         if not ok:
             break
+        if idx >= MAX_FRAMES:
+            cap.release()
+            raise RuntimeError(f"The video has more than {MAX_FRAMES} frames. Use a shorter clip.")
         frame = resize_max_side(frame, max_side)
         score = sharpness(frame)
         if score > best_score:

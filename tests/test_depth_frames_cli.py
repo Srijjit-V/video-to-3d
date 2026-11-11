@@ -81,3 +81,62 @@ def test_quality_warnings_flag_few_frames():
     scene["scale_method"] = "camera height given: 1.5 m"
     assert not any("Real-world scale" in x for x in quality_warnings(scene))
 
+
+
+def _write_video(path, n, fps, size):
+    w, h = size
+    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+    for _ in range(n):
+        vw.write(np.zeros((h, w, 3), np.uint8))
+    vw.release()
+
+
+def test_extract_frames_refuses_a_video_that_is_too_long(tmp_path):
+    video = tmp_path / "long.mp4"
+    _write_video(video, 310, 1, (16, 16))  # 310 seconds
+    with pytest.raises(RuntimeError, match="longer than"):
+        extract_frames(video, tmp_path / "frames")
+    assert not list((tmp_path / "frames").glob("*.jpg"))
+
+
+def test_extract_frames_refuses_frames_bigger_than_4k(tmp_path):
+    video = tmp_path / "huge.mp4"
+    _write_video(video, 100, 30, (3840, 2200))  # 8.45 million pixels
+    with pytest.raises(RuntimeError, match="too large"):
+        extract_frames(video, tmp_path / "frames")
+
+
+def test_extract_frames_stops_when_the_real_frame_count_passes_the_limit(tmp_path, monkeypatch):
+    # The header can lie, so the decode loop has its own guard.
+    from vid3d import frames
+
+    video = tmp_path / "v.mp4"
+    _write_video(video, 120, 30, (64, 48))
+    monkeypatch.setattr(frames, "MAX_FRAMES", 50)
+
+    real_capture = cv2.VideoCapture
+
+    class LyingCapture:  # header says 0 frames, like a damaged or hostile file
+        def __init__(self, path):
+            self._cap = real_capture(path)
+
+        def get(self, prop):
+            return 0.0
+
+        def __getattr__(self, name):
+            return getattr(self._cap, name)
+
+    monkeypatch.setattr(frames.cv2, "VideoCapture", LyingCapture)
+    with pytest.raises(RuntimeError, match="more than 50 frames"):
+        extract_frames(video, tmp_path / "frames")
+
+
+@pytest.mark.parametrize("given", ["/Users/someone/Documents/home/room.mp4", "C:\\Users\\someone\\room.mp4",
+                                   "runs/web/uploads/a1b2.mp4", "room.mp4"])
+def test_scene_records_only_the_video_file_name(given):
+    from pathlib import Path
+    from vid3d.pipeline import video_label
+
+    label = video_label(Path(given))
+    assert label.endswith("room.mp4") or label.endswith("a1b2.mp4")
+    assert "/" not in label and "\\" not in label and "someone" not in label
