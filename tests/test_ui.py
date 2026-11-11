@@ -189,7 +189,7 @@ def test_hosted_sample_loads_colour_modes_picker_and_measure_work(desktop, hoste
     pg.wait_for_selector("#pick-readout", state="visible")
     r, g, bl = a["rgb"]
     assert pg.inner_text("#pick-rgb") == f"RGB {r}, {g}, {bl}"
-    assert pg.inner_text("#pick-hex") == "#{:02x}{:02x}{:02x}".format(r, g, bl)
+    assert pg.inner_text("#pick-hex") == f"#{r:02x}{g:02x}{bl:02x}"
     assert "Height" in pg.inner_text("#pick-extra") and "seen in" in pg.inner_text("#pick-extra")
     assert pg.evaluate("getComputedStyle(document.getElementById('pick-swatch')).backgroundColor") == f"rgb({r}, {g}, {bl})"
 

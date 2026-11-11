@@ -18,6 +18,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .privacy import clean_intermediates
@@ -58,7 +59,8 @@ class Job:
         self.details: dict[int, str] = {}
         self.error: str | None = None
         self.tail: list[str] = []
-        self.t0, self.t1 = time.time(), None
+        self.t1: float | None
+        self.t0, self.t1 = time.time(), None  # t1 is set when the job ends
         self.proc: subprocess.Popen | None = None
 
     def feed(self, line: str) -> None:
@@ -88,7 +90,7 @@ class Job:
             else:
                 status = "pending"
             stages.append({"n": n, "label": label, "status": status, "detail": self.details.get(n, "")})
-        out = {"id": self.id, "state": self.state, "stages": stages, "error": self.error,
+        out: dict[str, Any] = {"id": self.id, "state": self.state, "stages": stages, "error": self.error,
                "elapsed": round((self.t1 or time.time()) - self.t0, 1)}
         if self.state == "done":
             out["files"] = {f: f"jobs/{self.id}/{f}" for f in RESULT_FILES if (self.dir / f).exists()}
@@ -118,7 +120,7 @@ class Jobs:
 
     def prune(self) -> None:
         """Keep the newest `keep` finished jobs on disk; running jobs are never touched."""
-        done = sorted((j for j in self.jobs.values() if j.t1 is not None), key=lambda j: j.t1)
+        done = sorted((j for j in self.jobs.values() if j.t1 is not None), key=lambda j: j.t1 or 0.0)
         for j in done[:max(0, len(done) - self.keep)]:
             shutil.rmtree(j.dir, ignore_errors=True)
             del self.jobs[j.id]
@@ -126,13 +128,15 @@ class Jobs:
     def start(self, job: Job, video: Path, opts: dict) -> None:
         self.prune()
         env = dict(os.environ, PYTHONPATH=str(SRC_DIR), PYTHONSAFEPATH="1", PYTHONUNBUFFERED="1")
-        job.proc = subprocess.Popen(self.command(video, job.dir, opts), stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, text=True, bufsize=1, env=env, cwd=SRC_DIR,
-                                    start_new_session=True)
+        job.proc = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+            self.command(video, job.dir, opts), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, env=env, cwd=SRC_DIR, start_new_session=True)
         self.jobs[job.id] = job
         threading.Thread(target=self._watch, args=(job,), daemon=True).start()
 
     def _watch(self, job: Job) -> None:
+        if job.proc is None or job.proc.stdout is None:
+            return
         for line in job.proc.stdout:
             job.feed(line.rstrip("\n"))
         code = job.proc.wait()
@@ -172,10 +176,13 @@ class ViewHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*a, directory=str(VIEWER_DIR), **kw)
 
     # -- safety --
+    def _port(self) -> int:
+        return int(self.server.server_address[1])  # type: ignore[index]
+
     def _host_ok(self) -> bool:
         # Block DNS rebinding: a web page on evil.com that re-points its name at
         # 127.0.0.1 still sends "Host: evil.com", so only accept local names.
-        port = self.server.server_address[1]
+        port = self._port()
         return self.headers.get("Host", "") in {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     def end_headers(self):
@@ -245,7 +252,7 @@ class ServeHandler(ViewHandler):
         return super().translate_path(path)
 
     def do_POST(self):
-        port = self.server.server_address[1]
+        port = self._port()
         if not self._host_ok():
             return self._json(421, {"error": "Misdirected request."})
         origin = self.headers.get("Origin")
@@ -284,7 +291,8 @@ class ServeHandler(ViewHandler):
                 except ValueError:
                     return self._json(400, {"error": f"{key.replace('_', ' ').capitalize()} must be a number."})
                 if not lo <= opts[key] <= hi:
-                    return self._json(400, {"error": f"{key.replace('_', ' ').capitalize()} must be between {lo} and {hi}."})
+                    name = key.replace("_", " ").capitalize()
+                    return self._json(400, {"error": f"{name} must be between {lo} and {hi}."})
         with self.jobs.lock:
             if self.jobs.busy():
                 return self._json(409, {"error": "Another video is still being processed. Wait for it or cancel it."})

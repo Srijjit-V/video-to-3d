@@ -51,7 +51,8 @@ def dominant_colors(rgb: np.ndarray, k: int = 3, max_points: int = 20000) -> lis
     lab = cv2.cvtColor(rgb.reshape(-1, 1, 3), cv2.COLOR_RGB2LAB).reshape(-1, 3).astype(np.float32)
     k = min(k, len(np.unique(rgb, axis=0)))
     cv2.setRNGSeed(0)
-    _, labels, _ = cv2.kmeans(lab, k, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5),
+    _, labels, _ = cv2.kmeans(lab, k, None,  # type: ignore[call-overload]
+                               (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5),
                               3, cv2.KMEANS_PP_CENTERS)
     labels = labels.ravel()
     out = []

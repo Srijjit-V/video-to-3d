@@ -12,6 +12,7 @@ from .color import dominant_colors
 from .geometry import yaw_align
 
 CELL = 0.05  # metres per grid cell
+MIN_WALL_SUPPORT = 0.88  # below this the bounding box is not a believable outline (L-shaped room, missing wall)
 MIN_ROOM_SIDE_M = 1.0  # anything narrower means a wall pair wasn't captured
 
 
@@ -78,6 +79,26 @@ def palette(points: np.ndarray, colors: np.ndarray, room: dict, room_height: flo
     return out
 
 
+def wall_support(xz: np.ndarray, rect: list[float]) -> float:
+    """How much of the bounding rectangle's outline is backed by wall points (0 to 1).
+
+    Each side of the rectangle is cut into 10 cm pieces; a piece counts when a wall point lies within
+    25 cm of it. A box room scores near 1 (a doorway costs a little). An L-shaped room's two missing
+    sides drop the mean to about 0.75, and the rectangle's area is then only an upper bound.
+    """
+    x0, z0, x1, z1 = rect
+    near, step = 0.25, 0.1
+    scores = []
+    for axis, fixed in ((0, x0), (0, x1), (1, z0), (1, z1)):
+        along = xz[:, 1 - axis]
+        lo, hi = (z0, z1) if axis == 0 else (x0, x1)
+        sel = along[np.abs(xz[:, axis] - fixed) < near]
+        bins = max(1, int(round((hi - lo) / step)))
+        h, _ = np.histogram(sel, bins=bins, range=(lo, hi))
+        scores.append(float((h > 0).mean()))
+    return float(np.mean(scores))
+
+
 def analyze(points: np.ndarray, room_height: float | None) -> dict:
     xz = wall_points(points, room_height)
     if len(xz) < 100:
@@ -90,8 +111,13 @@ def analyze(points: np.ndarray, room_height: float | None) -> dict:
         return {"incomplete": True,
                 "reason": "Opposite walls were not both captured, so the room size can't be measured."}
     area = length * width
+    support = wall_support(xz, [x0, z0, x1, z1])
+    rectangular = support >= MIN_WALL_SUPPORT
     return {
         "rect_m": [x0, z0, x1, z1],
+        "rectangular": rectangular,
+        "wall_support": round(support, 3),
+        "area_is_upper_bound": not rectangular,
         "length_m": round(length, 3),
         "width_m": round(width, 3),
         "height_m": round(room_height, 3) if room_height else None,

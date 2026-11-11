@@ -56,7 +56,7 @@ def test_palette_has_no_ceiling_when_it_was_not_seen():
 
 def test_exposure_gains_even_out_frames_and_stay_gentle():
     gains = color.exposure_gains([60.0, 120.0, 180.0, 120.0])
-    even = [l * g for l, g in zip([60.0, 120.0, 180.0, 120.0], gains)]
+    even = [l * g for l, g in zip([60.0, 120.0, 180.0, 120.0], gains, strict=True)]
     assert max(even) - min(even) < 180 - 60  # closer together than before
     assert all(color.GAIN_LIMITS[0] <= g <= color.GAIN_LIMITS[1] for g in gains)
 

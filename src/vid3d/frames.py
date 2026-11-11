@@ -7,7 +7,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-
 MIN_SECONDS = 3.0  # shorter clips don't move enough to solve the camera path
 # Upper limits, checked from the file header before any frame is decoded and again
 # while decoding (a header can lie). A walk through one room never needs more.
@@ -87,5 +86,6 @@ def extract_frames(video_path: Path, out_dir: Path, target: int = 80, max_side: 
     cap.release()
 
     if len(saved) < 10:
-        raise RuntimeError(f"Only {len(saved)} usable frames were found. Try a longer video with steady, sharp footage.")
+        raise RuntimeError(f"Only {len(saved)} usable frames were found. "
+                           "Try a longer video with steady, sharp footage.")
     return saved

@@ -68,12 +68,12 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Problem:** installs are not reproducible and known-vulnerable dependencies would go unnoticed.
    - **Fix:** hash-pinned `requirements/*.txt`, `pip-audit` in CI, a GitHub Actions workflow, and `docs/SECURITY.md` with a threat model.
    - **If we skip it:** "it worked on my machine" and silent CVEs.
-   - **Status:** open
+   - **Status:** open (CI, SECURITY.md and lockfile in progress)
 
 8. **No linter and no type checker**
    - **Fix:** ruff (lint and format check) and mypy on `src/`, both in CI.
    - **If we skip it:** style drift and a class of type bugs reach main.
-   - **Status:** open
+   - **Status:** fixed (ruff incl. security rules and mypy on `src/`, both clean; config in `pyproject.toml`)
 
 9. **L-shaped (non-rectangular) rooms get an overestimated area with no warning**
    - **What this is:** the room is always the bounding rectangle of the wall points.
@@ -81,7 +81,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Fix:** rasterise the wall outline, fill the inside, and compare it to the rectangle; below 88% filled the room is flagged and the
      rectangle area is labelled an upper bound. Test: an L-shaped cloud is flagged and a box is not.
    - **If we skip it:** wrong areas that look precise.
-   - **Status:** open
+   - **Status:** fixed (`wall_support` in `floorplan.py`: share of the bounding rectangle's outline backed by wall points; below 0.88 the room is flagged and the area is called an upper bound; tests with an L-shaped room and a box). The first idea, a filled-area ratio, was dropped: a doorway lets the fill leak and would flag ordinary boxes
 
 10. **The wall extent uses a fixed 30% histogram threshold**
     - **Problem:** furniture, a door recess or an uneven point density can move which bins count as "the wall", and so the size.

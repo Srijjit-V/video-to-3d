@@ -18,7 +18,8 @@ def test_find_floor_recovers_up_and_heights_in_arbitrary_frame(room):
     # Put the room in a random pose and scale, like a raw COLMAP solve.
     R, s, shift = random_rotation(3), 0.37, np.array([4.0, -2.0, 7.0])
     cams_true = np.c_[np.linspace(1.5, 3.5, 30), np.full(30, 1.5), np.linspace(1.5, 2.5, 30)]
-    to_raw = lambda p: (p @ R.T) * s + shift
+    def to_raw(p):
+        return (p @ R.T) * s + shift
     up_true = R @ np.array([0, 1.0, 0])
     noisy_hint = up_true + np.array([0.1, -0.05, 0.08])  # cameras are pitched, hint is off
 

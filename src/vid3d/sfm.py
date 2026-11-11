@@ -14,7 +14,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 GOOD_FRACTION = 0.8  # below this share of frames placed, try harder
 MIN_FRACTION = 0.5  # below this, refuse: measurements would be unreliable
 EXHAUSTIVE_MAX_FRAMES = 150  # ~100 s for 90 frames on an M2; grows with frames squared

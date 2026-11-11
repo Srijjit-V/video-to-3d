@@ -46,7 +46,8 @@ def main(argv=None) -> None:
     p.add_argument("--ceiling-height", type=float, help="known ceiling height in metres; most accurate scale")
     p.add_argument("--stride", type=int, default=4, help="pixel step for dense points (lower = denser)")
     p.add_argument("--fov", type=float, default=70.0,
-                   help="starting guess for the lens's field of view across the long side (deg); ~70 for phone main camera, ~110 for ultra-wide")
+                   help="starting guess for the lens's field of view across the long side (deg); "
+                        "~70 for phone main camera, ~110 for ultra-wide")
 
     p.add_argument("--keep-intermediate", action="store_true",
                    help="keep frames/ and work/ (photos of your room) for debugging; they are deleted by default")
@@ -71,7 +72,7 @@ def main(argv=None) -> None:
                     ceiling_height=args.ceiling_height, stride=args.stride, fov=args.fov,
                     keep_intermediate=args.keep_intermediate)
         except RuntimeError as e:
-            raise SystemExit(f"error: {e}")
+            raise SystemExit(f"error: {e}") from None
         print(f"\nView it:  vid3d view {out}")
     elif args.cmd == "serve":
         serve(args.runs, args.port, not args.no_browser)

@@ -135,6 +135,7 @@ def test_extract_frames_stops_when_the_real_frame_count_passes_the_limit(tmp_pat
                                    "runs/web/uploads/a1b2.mp4", "room.mp4"])
 def test_scene_records_only_the_video_file_name(given):
     from pathlib import Path
+
     from vid3d.pipeline import video_label
 
     label = video_label(Path(given))
@@ -155,6 +156,7 @@ def test_clean_intermediates_removes_frames_and_work_but_keeps_results(tmp_path)
 
 def test_depth_model_is_pinned_to_a_commit_and_safetensors(monkeypatch):
     import re
+
     from vid3d import depth
 
     assert re.fullmatch(r"[0-9a-f]{40}", depth.MODEL_REVISION)
@@ -178,3 +180,29 @@ def test_depth_model_is_pinned_to_a_commit_and_safetensors(monkeypatch):
     assert len(seen) == 2
     assert all(kw.get("revision") == depth.MODEL_REVISION for _, kw in seen)
     assert seen[1][1].get("use_safetensors") is True
+
+
+def test_clean_intermediates_leaves_folders_it_did_not_create(tmp_path):
+    # `--out` may point at a folder that already has the user's own "work" directory.
+    from vid3d.privacy import clean_intermediates, existing_private_dirs
+
+    (tmp_path / "work").mkdir()
+    (tmp_path / "work" / "mine.txt").write_text("keep me")
+    before = existing_private_dirs(tmp_path)
+    (tmp_path / "frames").mkdir()  # created by the run
+    clean_intermediates(tmp_path, skip=before)
+    assert (tmp_path / "work" / "mine.txt").exists()
+    assert not (tmp_path / "frames").exists()
+
+
+def test_clean_intermediates_never_follows_a_symlink(tmp_path):
+    from vid3d.privacy import clean_intermediates
+
+    target = tmp_path / "elsewhere"
+    target.mkdir()
+    (target / "precious.txt").write_text("x")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "frames").symlink_to(target, target_is_directory=True)
+    clean_intermediates(out)
+    assert (target / "precious.txt").exists()

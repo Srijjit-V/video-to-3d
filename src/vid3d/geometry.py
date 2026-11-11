@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -78,7 +79,7 @@ def ransac_plane(pts, thresh, iters=400, normal_hint=None, max_angle_deg=25.0, s
     rng = np.random.default_rng(seed)
     if len(pts) < 3:
         return None
-    best = (None, None, 0)
+    best: tuple[Any, Any, int] = (None, None, 0)
     cos_lim = np.cos(np.radians(max_angle_deg))
     for _ in range(iters):
         a, b, c = pts[rng.choice(len(pts), 3, replace=False)]
@@ -193,6 +194,8 @@ def find_floor(points: np.ndarray, cam_centers: np.ndarray, up_hint: np.ndarray)
             if top > 1.2 * cam_height and on_top.sum() > 0.1 * floor_count and \
                     _interior_fraction(points[on_top], walls, up, center) > 0.3:
                 ceiling = float(top)
+    if d is None:
+        raise RuntimeError("The floor could not be found in this video.")
     return FloorInfo(up=up, floor_d=float(d), cam_height_raw=cam_height, ceiling_height_raw=ceiling)
 
 

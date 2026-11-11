@@ -24,5 +24,5 @@ def test_synthetic_room_measures_within_6_percent(tmp_path):
     room = process(video, tmp_path / "run", camera_height=truth["camera_height_m"])["room"]
     got = sorted([room["length_m"], room["width_m"]])
     want = sorted([truth["length_m"], truth["width_m"]])
-    for g, w in zip(got, want):
+    for g, w in zip(got, want, strict=True):
         assert abs(g - w) / w < 0.06, (got, want)

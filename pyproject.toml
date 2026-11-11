@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "playwright"]
+dev = ["pytest", "playwright", "ruff", "mypy", "pip-audit"]
 
 [project.scripts]
 vid3d = "vid3d.cli:main"
@@ -29,3 +29,23 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+ignore = ["E741"]  # short names (l, O) are normal in the maths code
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S603", "S607", "S108", "S310", "E501"]  # asserts and subprocess are what tests do
+"scripts/*" = ["S603", "S607"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/vid3d"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true

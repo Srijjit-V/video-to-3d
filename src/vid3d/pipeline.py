@@ -15,8 +15,8 @@ import numpy as np
 from . import color, floorplan
 from .depth import DepthModel, align_disparity, metric_depth
 from .frames import extract_frames
-from .privacy import clean_intermediates
 from .geometry import View, backproject, find_floor, floor_frame, fuse, yaw_align
+from .privacy import clean_intermediates, existing_private_dirs
 
 DEFAULT_CAMERA_HEIGHT_M = 1.45  # typical height of a phone held while walking
 
@@ -69,11 +69,12 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
             keep_intermediate: bool = False) -> dict:
     """Run the six stages. The frames and COLMAP work folder are deleted at the end (success or
     failure) unless keep_intermediate is set: they are photos of the user's room."""
+    preexisting = existing_private_dirs(out)  # never delete a folder that was there before this run
     try:
         return _process(video, out, n_frames, camera_height, ceiling_height, stride, fov)
     finally:
         if not keep_intermediate:
-            clean_intermediates(out)
+            clean_intermediates(out, skip=preexisting)
 
 
 def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
@@ -91,8 +92,9 @@ def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
     # stray file there (e.g. a "numpy.py") can't be imported in place of the real one.
     src_dir = Path(__file__).resolve().parents[1]
     env = dict(os.environ, PYTHONPATH=str(src_dir), PYTHONSAFEPATH="1")
-    sfm = subprocess.run([sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()),
-                          str(fov)], env=env, cwd=src_dir, stderr=subprocess.PIPE, text=True)
+    # fixed argument list (interpreter, -m module, our own folders); no shell, no user text
+    cmd = [sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()), str(fov)]
+    sfm = subprocess.run(cmd, env=env, cwd=src_dir, stderr=subprocess.PIPE, text=True)  # noqa: S603
     if sfm.returncode != 0:
         # sfm.py exits 3 with an "error:" line when it has a message meant for people.
         said = [l[6:] for l in sfm.stderr.splitlines() if l.startswith("error: ")]
@@ -105,9 +107,15 @@ def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
     model = DepthModel()
     log(f"      device: {model.device}")
     all_p, all_c, all_f, fits = [], [], [], []
-    read = lambda v: cv2.cvtColor(cv2.imread(str(frames_dir / v.name)), cv2.COLOR_BGR2RGB)
+
+    def read(v):
+        img = cv2.imread(str(frames_dir / v.name))
+        if img is None:
+            raise RuntimeError(f"Frame {v.name} could not be read back; the frames folder was changed during the run.")
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
     gains = color.exposure_gains([color.frame_luma(read(v)) for v in views])
-    for i, (v, k1, o, gain) in enumerate(zip(views, k1s, obs, gains)):
+    for i, (v, k1, o, gain) in enumerate(zip(views, k1s, obs, gains, strict=True)):
         rgb = read(v)
         disp = model.disparity(rgb)  # depth uses the untouched frame
         u = np.clip(o[:, 0].astype(int), 0, disp.shape[1] - 1)
@@ -202,6 +210,9 @@ def quality_warnings(scene: dict) -> list[str]:
         w.append("AI depth could not be matched on many frames; the model may be patchy.")
     if scene["room"].get("incomplete"):
         w.append(scene["room"]["reason"])
+    if scene["room"].get("rectangular") is False:
+        w.append("The room outline is not a simple rectangle (an L-shaped room, or a wall that was only partly "
+                 "captured). The area shown is the bounding rectangle, so the real floor area is smaller.")
     if "(assumed)" in scene["scale_method"]:
         w.append("Real-world scale is a guess from typical phone height (about ±5–10%). "
                  "Use --camera-height, --ceiling-height or calibrate in the viewer to tighten it.")
