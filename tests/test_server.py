@@ -220,3 +220,42 @@ def test_only_one_video_is_processed_at_a_time(tmp_path):
         assert wait_for(job, {"cancelled"}) == "cancelled"
     finally:
         live.stop()
+
+
+# ---------- private files are removed when a job ends ----------
+
+def _seed_private(job_dir):
+    for name in ("frames", "work"):
+        (job_dir / name).mkdir(parents=True)
+        (job_dir / name / "x.bin").write_bytes(b"x")
+    (job_dir / "video.mp4").write_bytes(b"x")
+
+
+def _wait_finished(job, timeout=10):
+    end = time.time() + timeout
+    while time.time() < end and job.t1 is None:
+        time.sleep(0.05)
+    assert job.t1 is not None
+
+
+@pytest.mark.parametrize("script,expect", [(OK, "done"), (FAIL, "error")])
+def test_job_removes_frames_work_and_the_uploaded_video_when_it_ends(tmp_path, script, expect):
+    jobs = Jobs(tmp_path, command=fake(script))
+    job = Job("c" * 12, tmp_path / ("c" * 12))
+    _seed_private(job.dir)
+    jobs.start(job, job.dir / "video.mp4", {})
+    _wait_finished(job)
+    assert job.state == expect
+    assert not (job.dir / "frames").exists() and not (job.dir / "work").exists()
+    assert not (job.dir / "video.mp4").exists()
+
+
+def test_cancelled_job_also_removes_private_files(tmp_path):
+    jobs = Jobs(tmp_path, command=fake(SLOW))
+    job = Job("d" * 12, tmp_path / ("d" * 12))
+    _seed_private(job.dir)
+    jobs.start(job, job.dir / "video.mp4", {})
+    time.sleep(0.3)
+    jobs.cancel(job)
+    _wait_finished(job)
+    assert not (job.dir / "frames").exists() and not (job.dir / "video.mp4").exists()

@@ -19,6 +19,8 @@ import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .privacy import clean_intermediates
+
 # shortcut: needs a source checkout (pip install -e .); ship viewer/ as package data to lift this.
 VIEWER_DIR = Path(__file__).resolve().parents[2] / "viewer"
 SRC_DIR = Path(__file__).resolve().parents[1]
@@ -125,6 +127,9 @@ class Jobs:
         for line in job.proc.stdout:
             job.feed(line.rstrip("\n"))
         code = job.proc.wait()
+        clean_intermediates(job.dir)  # also after a cancel, when the pipeline could not clean up itself
+        for upload in job.dir.glob("video.*"):
+            upload.unlink(missing_ok=True)  # the original may carry GPS and device metadata
         if job.state == "cancelled":
             pass
         elif code == 0 and all((job.dir / f).exists() for f in ("cloud.ply", "scene.json")):

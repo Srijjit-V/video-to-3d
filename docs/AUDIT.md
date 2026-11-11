@@ -36,7 +36,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Fix:** delete `frames/`, `work/` and the uploaded copy when the job ends (success, error or cancel); keep only `cloud.ply`,
      `scene.json` and `floorplan.png`. `--keep-intermediate` turns this off for debugging. The user's own input file is never deleted.
    - **If we skip it:** the tool quietly builds an archive of the inside of the user's home, with location data.
-   - **Status:** open
+   - **Status:** fixed (`privacy.py`; the pipeline cleans in `finally`, the server cleans after cancel too; `--keep-intermediate` opts out)
 
 4. **The depth model is downloaded with no pinned revision**
    - **What this is:** `from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")`.
@@ -44,7 +44,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Fix:** pin the exact commit hash and load safetensors only (no pickle). Test: the revision is a 40-character hash and is
      passed to both `from_pretrained` calls.
    - **If we skip it:** a supply-chain attack on the model repository runs on the user's machine.
-   - **Status:** open
+   - **Status:** fixed (`MODEL_REVISION` in `depth.py`, `use_safetensors=True`; test checks both calls)
 
 ## Should fix
 

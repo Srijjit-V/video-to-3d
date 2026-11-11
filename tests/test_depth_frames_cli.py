@@ -140,3 +140,41 @@ def test_scene_records_only_the_video_file_name(given):
     label = video_label(Path(given))
     assert label.endswith("room.mp4") or label.endswith("a1b2.mp4")
     assert "/" not in label and "\\" not in label and "someone" not in label
+
+
+def test_clean_intermediates_removes_frames_and_work_but_keeps_results(tmp_path):
+    from vid3d.pipeline import clean_intermediates
+
+    for d in ("frames", "work"):
+        (tmp_path / d).mkdir()
+        (tmp_path / d / "a.jpg").write_bytes(b"x")
+    (tmp_path / "scene.json").write_text("{}")
+    clean_intermediates(tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["scene.json"]
+
+
+def test_depth_model_is_pinned_to_a_commit_and_safetensors(monkeypatch):
+    import re
+    from vid3d import depth
+
+    assert re.fullmatch(r"[0-9a-f]{40}", depth.MODEL_REVISION)
+    seen = []
+
+    class Fake:
+        def to(self, _):
+            return self
+
+        def eval(self):
+            return self
+
+    def fake_from_pretrained(cls, name, **kw):
+        seen.append((name, kw))
+        return Fake()
+
+    from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+    monkeypatch.setattr(AutoImageProcessor, "from_pretrained", classmethod(fake_from_pretrained))
+    monkeypatch.setattr(AutoModelForDepthEstimation, "from_pretrained", classmethod(fake_from_pretrained))
+    depth.DepthModel(device="cpu")
+    assert len(seen) == 2
+    assert all(kw.get("revision") == depth.MODEL_REVISION for _, kw in seen)
+    assert seen[1][1].get("use_safetensors") is True

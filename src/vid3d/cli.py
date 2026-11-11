@@ -48,6 +48,9 @@ def main(argv=None) -> None:
     p.add_argument("--fov", type=float, default=70.0,
                    help="starting guess for the lens's field of view across the long side (deg); ~70 for phone main camera, ~110 for ultra-wide")
 
+    p.add_argument("--keep-intermediate", action="store_true",
+                   help="keep frames/ and work/ (photos of your room) for debugging; they are deleted by default")
+
     v = sub.add_parser("view", help="open the 3D viewer for a processed run")
     v.add_argument("run", type=Path)
     v.add_argument("--port", type=int, default=8765)
@@ -65,7 +68,8 @@ def main(argv=None) -> None:
         out = args.out or Path("runs") / args.video.stem
         try:
             process(args.video, out, n_frames=args.frames, camera_height=args.camera_height,
-                    ceiling_height=args.ceiling_height, stride=args.stride, fov=args.fov)
+                    ceiling_height=args.ceiling_height, stride=args.stride, fov=args.fov,
+                    keep_intermediate=args.keep_intermediate)
         except RuntimeError as e:
             raise SystemExit(f"error: {e}")
         print(f"\nView it:  vid3d view {out}")

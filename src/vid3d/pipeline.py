@@ -15,6 +15,7 @@ import numpy as np
 from . import color, floorplan
 from .depth import DepthModel, align_disparity, metric_depth
 from .frames import extract_frames
+from .privacy import clean_intermediates
 from .geometry import View, backproject, find_floor, floor_frame, fuse, yaw_align
 
 DEFAULT_CAMERA_HEIGHT_M = 1.45  # typical height of a phone held while walking
@@ -64,7 +65,19 @@ def video_label(video: Path) -> str:
 
 
 def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | None = None,
-            ceiling_height: float | None = None, stride: int = 4, fov: float = 70.0) -> dict:
+            ceiling_height: float | None = None, stride: int = 4, fov: float = 70.0,
+            keep_intermediate: bool = False) -> dict:
+    """Run the six stages. The frames and COLMAP work folder are deleted at the end (success or
+    failure) unless keep_intermediate is set: they are photos of the user's room."""
+    try:
+        return _process(video, out, n_frames, camera_height, ceiling_height, stride, fov)
+    finally:
+        if not keep_intermediate:
+            clean_intermediates(out)
+
+
+def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
+             ceiling_height: float | None, stride: int, fov: float) -> dict:
     t0 = time.time()
     out.mkdir(parents=True, exist_ok=True)
     frames_dir, work = out / "frames", out / "work"

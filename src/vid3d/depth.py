@@ -10,6 +10,9 @@ from __future__ import annotations
 import numpy as np
 
 MODEL_NAME = "depth-anything/Depth-Anything-V2-Small-hf"
+# Exact commit of the weights that were tested. Without it "latest" is downloaded, so whoever
+# controls the repository could change what runs on the user's machine.
+MODEL_REVISION = "5426e4f0f36572d16453bbda7a8389317b1bef99"
 
 
 def pick_device():
@@ -27,8 +30,9 @@ class DepthModel:
         from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 
         self.device = device or pick_device()
-        self.processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
-        self.model = AutoModelForDepthEstimation.from_pretrained(MODEL_NAME).to(self.device).eval()
+        self.processor = AutoImageProcessor.from_pretrained(MODEL_NAME, revision=MODEL_REVISION)
+        self.model = AutoModelForDepthEstimation.from_pretrained(
+            MODEL_NAME, revision=MODEL_REVISION, use_safetensors=True).to(self.device).eval()
 
     def disparity(self, rgb: np.ndarray) -> np.ndarray:
         """Relative inverse depth (bigger = closer), same size as the input."""
