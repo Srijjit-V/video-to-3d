@@ -18,7 +18,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Fix:** read the header first and refuse above 300 s, 8.3 million pixels per frame (4K) or 20,000 frames, with a plain message;
      also stop while decoding if the real frame count passes the limit. Test: a video over each limit is refused before decoding.
    - **If we skip it:** one bad file can freeze the machine running `vid3d serve`.
-   - **Status:** open
+   - **Status:** fixed (`frames.py` limits; tests in `tests/test_depth_frames_cli.py`)
 
 2. **`scene.json` stores the full local path of the video**
    - **What this is:** `"video": str(video)`.
@@ -26,7 +26,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
      (dropped into the hosted viewer, attached to a bug report), so it leaks the username and folder layout.
    - **Fix:** store only the file name. Test: no `/` or `\` in the field, whatever path is given.
    - **If we skip it:** every shared scene discloses where the owner keeps their files.
-   - **Status:** open
+   - **Status:** fixed (`video_label` in `pipeline.py`; test with POSIX, Windows and relative paths)
 
 3. **Private intermediates of a home video are kept forever**
    - **What this is:** after a run, `frames/` (a photo of the user's room every ~0.4 s), `work/` (COLMAP's feature database)

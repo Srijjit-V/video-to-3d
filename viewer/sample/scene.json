@@ -1,5 +1,5 @@
 {
-  "video": "samples/synthetic_room.mp4",
+  "video": "synthetic_room.mp4",
   "scale_method": "camera height given: 1.5 m",
   "frames_extracted": 45,
   "frames_registered": 45,
