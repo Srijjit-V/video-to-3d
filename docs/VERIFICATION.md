@@ -7,7 +7,7 @@ Everything here was actually run; anything not run is under "Not verified".
 
 | Check | Command | Result |
 |---|---|---|
-| Python tests | `python -m pytest -q` | **130 passed, 15 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
+| Python tests | `python -m pytest -q` | **131 passed, 15 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
 | Viewer logic | `node --test "tests/js/*.test.mjs"` | **11 passed** |
 | Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **12 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
 | Lint | `ruff check .` (pyflakes, pycodestyle, bugbear, pyupgrade, bandit rules, import order) | clean |
@@ -15,7 +15,7 @@ Everything here was actually run; anything not run is under "Not verified".
 | Dependency audit | `pip-audit -r requirements/lock-py311.txt --no-deps --disable-pip` | no known vulnerabilities |
 | Bundled three.js | `python scripts/verify_vendor.py` | hashes match; `three.module.min.js` is byte-identical to the npm package `three@0.160.0` |
 
-Test files by count: server 30, uncertainty 17, depth/frames/cli/privacy 21, floorplan 16, geometry 14, design contrast 23, colour 8, vendor integrity 2, UI 13 (opt-in), end-to-end 1 (opt-in).
+Test files by count: server 30, uncertainty 17, depth/frames/cli/privacy 21, floorplan 16, geometry 14, design contrast 23, colour 8, vendor integrity and tracked samples 3, UI 13 (opt-in), end-to-end 1 (opt-in).
 CI (`.github/workflows/ci.yml`) runs the same lint, types, vendor check, tests, Playwright viewer tests and the audit on every push.
 
 ## End-to-end accuracy (synthetic room only)
@@ -53,5 +53,6 @@ The camera solver is not fully deterministic: repeated runs on this video differ
 - Rooms with mirrors, glass, moving people, very dark or blank surfaces; non-rectangular rooms beyond one synthetic L-shape; ceilings (the sample's ceiling is not detected, so no height is reported).
 - Operating systems other than macOS on Apple silicon; CUDA.
 - Browsers other than desktop Chrome and Chrome emulating a phone; real touch devices.
-- The CI workflow has not run on GitHub yet at the time of writing (it was written and its commands were run locally).
+- CI: the workflow ran green on GitHub for commits 4d2b203 and d2c0c56 (checked through the public Actions API); later commits were still running when this was written.
+- Vercel: not deployed. The Vercel connector refused project creation and the Vercel CLI is not installed. GitHub Pages is the live host.
 - Vulnerabilities inside OpenCV, FFmpeg, COLMAP or PyTorch beyond what `pip-audit` reports.

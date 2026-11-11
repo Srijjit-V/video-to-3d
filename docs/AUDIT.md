@@ -106,7 +106,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
 ## Nice to have
 
 13. **A regression test that the bundled sample scenes stay tracked in git.** The `.gitignore` is fine today (verified), but
-    `samples/` and `runs/` are ignored one folder away from `viewer/sample/`. **Status:** open
+    `samples/` and `runs/` are ignored one folder away from `viewer/sample/`. **Status:** fixed (test in `tests/test_vendor_integrity.py`: demo files are tracked, not ignored, and under 5 MB)
 14. **A range and a confidence score for every dimension** (new math, see Step 2 of the work plan and `docs/MATH.md`). **Status:** fixed (`uncertainty.py`: 90% ranges and a 0 to 100 confidence with reasons; `scene.json` keys `uncertainty`, `confidence`, `camera_height`)
 15. **Export the floor plan as SVG and JSON; a before/after calibration readout.** **Status:** open
 
