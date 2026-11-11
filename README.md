@@ -15,7 +15,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Free and open source. Runs on a laptop: no LiDAR, no cloud, no API keys.
-A phone video becomes a metric point cloud, a room size **with a 90% range and a confidence score**, a floor plan, the room's colours and a browser viewer.
+A phone video becomes a metric point cloud, a room size **with a 90% range and a confidence score**, a floor plan (download as SVG or JSON), the room's colours and a browser viewer.
 
 [Live viewer and demo](https://srijjit-v.github.io/video-to-3d/) · [Run it on your video](#run-it-on-your-video) · [Architecture](#architecture) · [Engineering](#engineering-highlights) · [Verification](#verification-and-limits)
 
@@ -109,7 +109,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 | Untrusted input | duration, resolution and frame-count limits before and during decode; 2 GB upload cap, extension allow-list, server-made file names |
 | Local server | `127.0.0.1` only, Host allow-list (DNS rebinding), Origin check, one job at a time, socket timeout, job pruning, traversal tests, CSP |
 | Supply chain | model pinned to a commit and loaded as safetensors; three.js bundled with a SHA-384 integrity hash checked against the npm package; hash-pinned lockfile; `pip-audit` in CI |
-| Quality gates | ruff (with security rules), mypy, 131 Python tests, 11 viewer-logic tests, 12 real-browser tests, GitHub Actions on every push |
+| Quality gates | ruff (with security rules), mypy, 131 Python tests, 16 viewer-logic tests, 13 real-browser tests, GitHub Actions on every push |
 | Accessible UI | keyboard-complete, screen-reader labels, tested contrast (23 checks), phone layout verified, strict CSP with no inline script |
 
 ## Explore the code
@@ -135,7 +135,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 
 Measured on 2026-11-10 (details in [docs/VERIFICATION.md](docs/VERIFICATION.md)):
 
-- **131** Python tests pass (15 opt-in skipped); **11** Node tests; **12** browser tests; ruff, mypy and `pip-audit` clean.
+- **131** Python tests pass (15 opt-in skipped); **16** Node tests; **13** browser tests; ruff, mypy and `pip-audit` clean.
 - Synthetic 5.0 x 4.0 m room: with the true camera height, 4.05 x 5.00 m (+1.3%, 0%) and the area range 18.1 to 22.2 m² contained the true 20 m²;
   with the default 1.45 m assumed, 3.90 x 4.85 m (-2.5%, -3.0%) and the range 13.9 to 24.4 m² contained it too.
 - One run per setting; the camera solver varies by a few percent between runs.

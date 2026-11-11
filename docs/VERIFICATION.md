@@ -8,7 +8,7 @@ Everything here was actually run; anything not run is under "Not verified".
 | Check | Command | Result |
 |---|---|---|
 | Python tests | `python -m pytest -q` | **131 passed, 15 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
-| Viewer logic | `node --test "tests/js/*.test.mjs"` | **11 passed** |
+| Viewer logic | `node --test "tests/js/*.test.mjs"` | **16 passed** |
 | Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **12 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
 | Lint | `ruff check .` (pyflakes, pycodestyle, bugbear, pyupgrade, bandit rules, import order) | clean |
 | Types | `mypy` on `src/vid3d` | clean, 12 files |

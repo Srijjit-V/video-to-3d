@@ -5,6 +5,7 @@ import { parsePly } from "./ply.js";
 import { RAMP, availableModes } from "./colors.js";
 import { detectMode, uploadVideo, getJob, cancelJob } from "./jobs.js";
 import { demoSteps, markDone } from "./demo.js";
+import { floorPlanJson, floorPlanSvg } from "./export.js";
 import { confidenceView, esc, fmtLen, fmtRange, mmss, textOn } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
@@ -194,6 +195,20 @@ async function loadUrls(base) {
   } catch (e) { show("start"); fail(`Couldn't open that scene. ${e.message}`); }
 }
 
+function saveText(name, type, text) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function exportPlan(kind) {
+  const k = view?.cal || 1;
+  if (kind === "svg") { const s = floorPlanSvg(meta, k); if (s) saveText("floorplan.svg", "image/svg+xml", s); }
+  else { const j = floorPlanJson(meta, k); if (j) saveText("floorplan.json", "application/json", JSON.stringify(j, null, 2)); }
+}
+$("plan-svg").addEventListener("click", () => exportPlan("svg"));
+$("plan-json").addEventListener("click", () => exportPlan("json"));
+
 function openScene(data, m, plan) {
   if (planUrl?.startsWith("blob:")) URL.revokeObjectURL(planUrl);
   meta = { ...m, points: m.points || data.count };
@@ -210,6 +225,7 @@ function openScene(data, m, plan) {
   plan$.onerror = () => ($("plan-wrap").hidden = true);
   plan$.onload = () => ($("plan-wrap").hidden = false);
   $("plan-wrap").hidden = !plan;
+  $("plan-export").hidden = !floorPlanJson(meta);
   if (plan) plan$.src = plan;
   $("panel").hidden = innerWidth <= 720;
   $("tool-panel").setAttribute("aria-expanded", String(!$("panel").hidden));

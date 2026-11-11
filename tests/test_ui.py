@@ -425,3 +425,18 @@ def test_demo_shows_guided_steps_ranges_confidence_and_the_bad_capture(desktop, 
     pg.click("#demo-switch")
     until(pg, "window.__vid3d.meta.demo.kind === 'good'", 20000)
     assert desktop.errors == []
+
+
+def test_floor_plan_downloads_as_svg_and_json_under_the_strict_csp(desktop, hosted_url, tmp_path):
+    pg = desktop.page
+    open_sample(desktop, hosted_url)
+    assert pg.is_visible("#plan-export")
+    with pg.expect_download() as d:
+        pg.click("#plan-svg")
+    svg = Path(d.value.path()).read_text()
+    assert d.value.suggested_filename == "floorplan.svg" and svg.startswith("<svg") and "m²" in svg
+    with pg.expect_download() as d:
+        pg.click("#plan-json")
+    data = json.loads(Path(d.value.path()).read_text())
+    assert d.value.suggested_filename == "floorplan.json" and len(data["room"]["rect_m"]) == 4
+    assert data["ranges"]["area_m2"][0] < data["room"]["area_m2"] < data["ranges"]["area_m2"][1]

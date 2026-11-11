@@ -117,3 +117,55 @@ test("demoSteps takes expected values from the scene's own truth, and is null fo
   assert.match(bad[1].expect, /at least 2\.57 m/);
   assert.equal(demoSteps({ room: {} }), null);
 });
+
+// ---------- floor plan export ----------
+import { floorPlanJson, floorPlanSvg } from "../../viewer/js/export.js";
+
+const planScene = {
+  room: { rect_m: [-2, -2.5, 2, 2.5], length_m: 4, width_m: 5, area_m2: 20, height_m: 2.4 },
+  cameras: [[0, 1.5, -1], [1, 1.5, 0], [0, 1.5, 1]],
+  uncertainty: { ranges: { length_m: [3.8, 4.2], width_m: [4.7, 5.3], area_m2: [18, 22] } },
+  confidence: { label: "high", score: 90 },
+  video: "<script>alert(1)</script>.mp4",
+};
+
+test("floor plan JSON holds the room box, ranges, confidence and camera path", () => {
+  const j = floorPlanJson(planScene);
+  assert.deepEqual(j.room.rect_m, [-2, -2.5, 2, 2.5]);
+  assert.deepEqual(j.ranges.area_m2, [18, 22]);
+  assert.equal(j.confidence.label, "high");
+  assert.deepEqual(j.camera_path_m, [[0, -1], [1, 0], [0, 1]]);
+  assert.equal(j.unit, "m");
+  assert.equal("video" in j, false); // the file name is not exported
+});
+
+test("calibration scales lengths, areas and ranges", () => {
+  const j = floorPlanJson(planScene, 1.1);
+  assert.equal(+j.room.length_m.toFixed(2), 4.4);
+  assert.equal(+j.room.area_m2.toFixed(1), 24.2);
+  assert.deepEqual(j.ranges.length_m.map((v) => +v.toFixed(2)), [4.18, 4.62]);
+  assert.equal(+j.room.rect_m[2].toFixed(2), 2.2);
+});
+
+test("floor plan SVG is well formed, scaled, and carries only numbers from the scene", () => {
+  const s = floorPlanSvg(planScene);
+  assert.match(s, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  assert.match(s, /<rect /);
+  assert.match(s, /4\.0 m/);
+  assert.match(s, /5\.0 m/);
+  assert.ok(!s.includes("<script"));
+  assert.ok(!s.includes("alert"));
+  assert.match(s, /<polyline /);
+});
+
+test("an open-ended range stays open in the export", () => {
+  const sc = { ...planScene, uncertainty: { ranges: { length_m: [2.7, null], width_m: [4.7, 5.3], area_m2: [9.8, null] } } };
+  assert.deepEqual(floorPlanJson(sc).ranges.area_m2, [9.8, null]);
+  assert.match(floorPlanSvg(sc), /at least 9\.8/);
+});
+
+test("no room box, or non-finite numbers, means no export", () => {
+  assert.equal(floorPlanJson({ room: { incomplete: true } }), null);
+  assert.equal(floorPlanSvg({ room: { rect_m: [0, 0, NaN, 1] } }), null);
+  assert.equal(floorPlanJson(planScene, 0), null);
+});
