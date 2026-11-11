@@ -119,3 +119,29 @@ def test_estimate_works_on_the_real_analyze_output(monkeypatch):
     room = floorplan.analyze(pts, h)
     est = uncertainty.estimate(pts, h, "camera height given: 1.5 m", floor_sigma_rel=0.01, seed=0)
     assert est["central"]["length_m"] == pytest.approx(room["length_m"], abs=0.1)
+
+
+def test_a_missing_wall_gives_an_at_least_range_never_a_two_sided_one():
+    half = box_room(TRUE_L, TRUE_W, TRUE_H)
+    half = half[half[:, 2] < 2.2]  # the far wall (z = 4) was never filmed
+    est = uncertainty.estimate(half, TRUE_H, "camera height given: 1.5 m", floor_sigma_rel=0.01, seed=0)
+    r = est["ranges"]
+    assert r["width_m"][1] is None and r["area_m2"][1] is None  # unbounded above: the room may be bigger
+    assert r["width_m"][0] < TRUE_W  # and the lower end is below the truth
+    assert r["length_m"][1] is not None and r["length_m"][0] <= TRUE_L <= r["length_m"][1]
+    assert est["lower_bound_only"] == ["width_m", "area_m2"]
+
+
+def test_confidence_is_low_when_a_wall_is_missing_even_with_everything_else_good():
+    c = uncertainty.confidence("camera height given: 1.5 m", 1.0, {"missing_wall": True, "rectangular": False},
+                               0.05, False)
+    assert c["label"] == "low"
+    assert any("never filmed" in r for r in c["reasons"])
+
+
+def test_range_helpers_handle_open_ended_ranges():
+    assert uncertainty.format_range([3.8, 4.2], "m") == "3.8 to 4.2 m"
+    assert uncertainty.format_range([2.7, None], "m") == "at least 2.7 m"
+    assert uncertainty.area_half_width_rel({"area_m2": [18.0, 22.0]}) == pytest.approx(0.1)
+    assert uncertainty.area_half_width_rel({"area_m2": [9.8, None]}) is None
+    assert uncertainty.area_half_width_rel(None) is None

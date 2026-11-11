@@ -9,6 +9,7 @@ percentile, so "4.0 m" becomes "3.8 to 4.2 m".
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 
@@ -33,6 +34,19 @@ def scale_source(method: str) -> str:
 def _interval(values: np.ndarray, digits: int) -> list[float]:
     lo, hi = np.percentile(values, [5, 95])
     return [round(float(lo), digits), round(float(hi), digits)]
+
+
+def format_range(r: list, unit: str) -> str:
+    """'3.8 to 4.2 m', or 'at least 2.7 m' when there is no upper end."""
+    return f"at least {r[0]} {unit}" if r[1] is None else f"{r[0]} to {r[1]} {unit}"
+
+
+def area_half_width_rel(ranges: dict | None) -> float | None:
+    """Half the width of the area range relative to its middle; None when there is no two-sided range."""
+    if not ranges or ranges["area_m2"][1] is None:
+        return None
+    lo, hi = ranges["area_m2"]
+    return (hi - lo) / 2 / max(1e-9, (hi + lo) / 2)
 
 
 def estimate(points: np.ndarray, room_height: float | None, method: str, floor_sigma_rel: float,
@@ -60,12 +74,18 @@ def estimate(points: np.ndarray, room_height: float | None, method: str, floor_s
     # One scale error is shared by every length: s_true / s_used = (h_true / h) * (h_raw / h_raw_true).
     f = np.clip((1 + rng.normal(0, SCALE_SIGMA_REL[src], n)) / (1 + rng.normal(0, floor_sigma_rel, n)), 0.5, 2.0)
     lengths, widths = lengths * f, widths * f
-    ranges = {
+    ranges: dict[str, Any] = {
         "length_m": _interval(lengths, 2),
         "width_m": _interval(widths, 2),
         "area_m2": _interval(lengths * widths, 1),
         "height_m": _interval(room_height * f, 2) if room_height else None,
     }
+    if room.get("missing_wall"):
+        # A wall was never filmed: the true room is at least this big, and there is no honest upper end.
+        axis = room["missing_axis"]
+        ranges[axis] = [ranges[axis][0], None]
+        ranges["area_m2"] = [ranges["area_m2"][0], None]
+        out["lower_bound_only"] = [axis, "area_m2"]
     out.update(central={k: room.get(k) for k in ("length_m", "width_m", "area_m2", "height_m")}, ranges=ranges)
     return out
 
@@ -115,6 +135,9 @@ def confidence(method: str, registered_share: float, room: dict, area_half_width
     if room.get("incomplete"):
         score = min(score, 20.0)
         reasons.append("Opposite walls were not both captured, so there is no size to trust.")
+    elif room.get("missing_wall"):
+        score = min(score, 35.0)
+        reasons.append("A wall was never filmed, so the room is bigger than what was measured.")
     elif room.get("rectangular") is False:
         score -= 20
         reasons.append("The outline is not a simple rectangle, so the area is an upper bound.")

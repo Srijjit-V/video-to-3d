@@ -103,3 +103,27 @@ def test_incomplete_room_still_reports_what_was_seen_as_a_lower_bound(room):
     long_side, short_side = r["at_least_m"]
     assert long_side == pytest.approx(5.0, abs=0.2)
     assert short_side < 1.0  # the missing direction: only the wall strip was seen
+
+
+def test_a_room_seen_only_halfway_is_called_a_lower_bound_not_an_l_shape(room):
+    half = room[room[:, 2] < 2.2]  # the walk never turned toward the far wall (z = 4)
+    r = floorplan.analyze(half, 2.6)
+    assert r.get("incomplete") is not True  # 2.2 m deep still looks like a room
+    assert r["missing_wall"] is True
+    assert r["area_is_lower_bound"] is True and r["area_is_upper_bound"] is False
+    assert r["rectangular"] is False
+
+
+def test_l_shape_is_an_upper_bound_and_not_a_missing_wall():
+    r = floorplan.analyze(l_room(), 2.6)
+    assert r["missing_wall"] is False and r["area_is_lower_bound"] is False
+
+
+def test_quality_warning_for_a_missing_wall_says_the_room_may_be_bigger():
+    from vid3d.pipeline import quality_warnings
+
+    scene = {"frames_registered": 80, "frames_extracted": 80, "frames_with_depth": 80,
+             "scale_method": "camera height given: 1.5 m",
+             "room": {"rectangular": False, "missing_wall": True, "area_is_lower_bound": True,
+                      "area_is_upper_bound": False}}
+    assert any("room may be bigger" in w for w in quality_warnings(scene))

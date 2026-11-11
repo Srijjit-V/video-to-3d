@@ -68,7 +68,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Problem:** installs are not reproducible and known-vulnerable dependencies would go unnoticed.
    - **Fix:** hash-pinned `requirements/*.txt`, `pip-audit` in CI, a GitHub Actions workflow, and `docs/SECURITY.md` with a threat model.
    - **If we skip it:** "it worked on my machine" and silent CVEs.
-   - **Status:** open (CI, SECURITY.md and lockfile in progress)
+   - **Status:** fixed (`requirements/lock-py311.txt`: every dependency pinned by version and sha256 via `scripts/make_lock.py`; `pip-audit` on it reports no known vulnerabilities (2026-11-10); `.github/workflows/ci.yml` runs lint, mypy, vendor hash check, Python and Node tests, the Playwright viewer tests and the audit; `docs/SECURITY.md`). The lockfile describes the macOS Python 3.11 environment the tests ran in, not other platforms
 
 8. **No linter and no type checker**
    - **Fix:** ruff (lint and format check) and mypy on `src/`, both in CI.

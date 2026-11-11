@@ -1,0 +1,299 @@
+{
+  "video": "synthetic_room_one_side_only (derived from the sample)",
+  "scale_method": "camera height given: 1.5 m",
+  "frames_extracted": 60,
+  "frames_registered": 60,
+  "frames_with_depth": 60,
+  "sfm_reprojection_error_px": 0.399,
+  "mean_depth_fit_inliers": 0.943,
+  "points": 87213,
+  "cameras": [
+    [
+      0.004,
+      1.493,
+      -1.098
+    ],
+    [
+      0.088,
+      1.504,
+      -1.091
+    ],
+    [
+      0.17,
+      1.512,
+      -1.073
+    ],
+    [
+      0.252,
+      1.516,
+      -1.043
+    ],
+    [
+      0.329,
+      1.513,
+      -1.003
+    ],
+    [
+      0.403,
+      1.504,
+      -0.949
+    ],
+    [
+      0.517,
+      1.489,
+      -0.838
+    ],
+    [
+      0.559,
+      1.484,
+      -0.786
+    ],
+    [
+      0.598,
+      1.48,
+      -0.731
+    ],
+    [
+      0.681,
+      1.48,
+      -0.578
+    ],
+    [
+      0.721,
+      1.486,
+      -0.477
+    ],
+    [
+      0.733,
+      1.489,
+      -0.442
+    ],
+    [
+      0.779,
+      1.507,
+      -0.261
+    ],
+    [
+      0.795,
+      1.517,
+      -0.148
+    ],
+    [
+      0.799,
+      1.52,
+      -0.11
+    ],
+    [
+      0.802,
+      1.523,
+      0.005
+    ],
+    [
+      0.796,
+      1.521,
+      0.12
+    ],
+    [
+      -0.794,
+      1.484,
+      0.154
+    ],
+    [
+      -0.797,
+      1.482,
+      0.116
+    ],
+    [
+      -0.799,
+      1.479,
+      -0.076
+    ],
+    [
+      -0.788,
+      1.485,
+      -0.191
+    ],
+    [
+      -0.777,
+      1.49,
+      -0.267
+    ],
+    [
+      -0.761,
+      1.496,
+      -0.34
+    ],
+    [
+      -0.731,
+      1.506,
+      -0.448
+    ],
+    [
+      -0.692,
+      1.513,
+      -0.551
+    ],
+    [
+      -0.646,
+      1.515,
+      -0.647
+    ],
+    [
+      -0.594,
+      1.512,
+      -0.736
+    ],
+    [
+      -0.513,
+      1.501,
+      -0.843
+    ],
+    [
+      -0.422,
+      1.487,
+      -0.933
+    ],
+    [
+      -0.398,
+      1.484,
+      -0.953
+    ],
+    [
+      -0.323,
+      1.476,
+      -1.004
+    ],
+    [
+      -0.244,
+      1.473,
+      -1.045
+    ],
+    [
+      -0.108,
+      1.48,
+      -1.088
+    ],
+    [
+      -0.08,
+      1.484,
+      -1.092
+    ]
+  ],
+  "room": {
+    "rect_m": [
+      -2.0215124785900116,
+      -2.51637086391449,
+      2.028487521409974,
+      0.20939984634518577
+    ],
+    "rectangular": false,
+    "wall_support": 0.769,
+    "missing_wall": true,
+    "missing_axis": "width_m",
+    "area_is_upper_bound": false,
+    "area_is_lower_bound": true,
+    "length_m": 4.05,
+    "width_m": 2.726,
+    "height_m": null,
+    "area_m2": 11.04,
+    "area_ft2": 118.8
+  },
+  "palette": {
+    "floor": [
+      {
+        "hex": "#6d4733",
+        "share": 0.406
+      },
+      {
+        "hex": "#4e2419",
+        "share": 0.312
+      },
+      {
+        "hex": "#779cb2",
+        "share": 0.282
+      }
+    ],
+    "ceiling": [],
+    "walls": [
+      {
+        "hex": "#966fb1",
+        "share": 0.447
+      },
+      {
+        "hex": "#8ac19a",
+        "share": 0.399
+      },
+      {
+        "hex": "#422f37",
+        "share": 0.154
+      }
+    ]
+  },
+  "seconds": 100.4,
+  "camera_height": {
+    "median_m": 1.5,
+    "spread_m": 0.015,
+    "relative": 0.01,
+    "inconsistent": false
+  },
+  "uncertainty": {
+    "scale_source": "given",
+    "scale_sigma_rel": 0.036,
+    "samples": 400,
+    "lower_bound_only": [
+      "width_m",
+      "area_m2"
+    ],
+    "central": {
+      "length_m": 4.05,
+      "width_m": 2.726,
+      "area_m2": 11.04,
+      "height_m": null
+    },
+    "ranges": {
+      "length_m": [
+        3.81,
+        4.28
+      ],
+      "width_m": [
+        2.57,
+        null
+      ],
+      "area_m2": [
+        9.8,
+        null
+      ],
+      "height_m": null
+    }
+  },
+  "confidence": {
+    "score": 35,
+    "label": "low",
+    "summary": "Treat these as a rough idea only.",
+    "reasons": [
+      "Scale depends on the camera height you gave.",
+      "A wall was never filmed, so the room is bigger than what was measured."
+    ]
+  },
+  "warnings": [
+    "One wall looks like it was never filmed, so the room may be bigger than measured. Walk so every wall appears at some point."
+  ],
+  "demo": {
+    "kind": "bad",
+    "truth": {
+      "length_m": 5.0,
+      "width_m": 4.0,
+      "height_m": 2.6,
+      "camera_height_m": 1.5,
+      "area_m2": 20.0,
+      "area_ft2": 215.3,
+      "door": {
+        "wall": "z=0",
+        "x_from_m": 1.6,
+        "width_m": 0.9,
+        "height_m": 2.03
+      }
+    },
+    "note": "The same room, but the walk stopped before the far wall: part of the room was never filmed."
+  }
+}

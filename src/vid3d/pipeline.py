@@ -195,22 +195,17 @@ def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
     }
     scene["camera_height"] = cam_height
     scene["uncertainty"] = uncertainty.estimate(P, room_h, method, floor_sigma)
-    ranges = scene["uncertainty"]["ranges"]
-    half_width = None
-    if ranges:
-        lo, hi = ranges["area_m2"]
-        half_width = (hi - lo) / 2 / max(1e-9, (hi + lo) / 2)
+    half_width = uncertainty.area_half_width_rel(scene["uncertainty"]["ranges"])
     scene["confidence"] = uncertainty.confidence(
         method, sfm_stats["frames_registered"] / max(1, sfm_stats["frames_total"]), room, half_width,
         cam_height["inconsistent"])
     scene["warnings"] = quality_warnings(scene)
     (out / "scene.json").write_text(json.dumps(scene, indent=2))
     log(f"done in {scene['seconds']} s -> {out}")
-    if scene["uncertainty"]["ranges"]:
-        rg = scene["uncertainty"]["ranges"]
-        log(f"range (90%): {rg['length_m'][0]}–{rg['length_m'][1]} x {rg['width_m'][0]}–{rg['width_m'][1]} m, "
-            f"area {rg['area_m2'][0]}–{rg['area_m2'][1]} m²; confidence {scene['confidence']['label']} "
-            f"({scene['confidence']['score']}/100)")
+    if rg := scene["uncertainty"]["ranges"]:
+        fmt = uncertainty.format_range
+        log(f"range (90%): {fmt(rg['length_m'], 'm')} x {fmt(rg['width_m'], 'm')}, area {fmt(rg['area_m2'], 'm²')}; "
+            f"confidence {scene['confidence']['label']} ({scene['confidence']['score']}/100)")
     if room.get("length_m"):
         log(f"room ≈ {room['length_m']} x {room['width_m']} m"
             + (f", height {room['height_m']} m" if room.get("height_m") else "")
@@ -234,7 +229,10 @@ def quality_warnings(scene: dict) -> list[str]:
     if scene.get("camera_height", {}).get("inconsistent"):
         w.append("The phone height changed a lot during the walk, so a single scale may not fit the whole room. "
                  "Hold the phone at one height.")
-    if scene["room"].get("rectangular") is False:
+    if scene["room"].get("missing_wall"):
+        w.append("One wall looks like it was never filmed, so the room may be bigger than measured. "
+                 "Walk so every wall appears at some point.")
+    elif scene["room"].get("rectangular") is False:
         w.append("The room outline is not a simple rectangle (an L-shaped room, or a wall that was only partly "
                  "captured). The area shown is the bounding rectangle, so the real floor area is smaller.")
     if "(assumed)" in scene["scale_method"]:

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 340" role="img" aria-label="Area error against the camera height that was assumed" font-family="system-ui, sans-serif" font-size="12"><style>text{fill:#1f2328}.grid{stroke:#d0d7de}.axis{stroke:#57606a}.accent{stroke:#0a69da;fill:none;stroke-width:2.5}.band{fill:#0a69da;opacity:.14}.dot{fill:#0a69da}.bar{fill:#0a69da}.mid{fill:#fff;stroke:#0a69da}@media(prefers-color-scheme:dark){text{fill:#e6edf3}.grid{stroke:#30363d}.axis{stroke:#8b949e}.accent{stroke:#58a6ff}.band{fill:#58a6ff}.dot,.bar{fill:#58a6ff}.mid{fill:#0d1117;stroke:#58a6ff}}</style>
+<text x="56" y="20" font-weight="600">Area error if the phone was really at 1.5 m</text>
+<line class="grid" x1="56" x2="620" y1="292.0" y2="292.0"/><text x="48" y="296.0" text-anchor="end">-40%</text>
+<line class="grid" x1="56" x2="620" y1="240.4" y2="240.4"/><text x="48" y="244.4" text-anchor="end">-20%</text>
+<line class="grid" x1="56" x2="620" y1="188.8" y2="188.8"/><text x="48" y="192.8" text-anchor="end">+0%</text>
+<line class="grid" x1="56" x2="620" y1="137.2" y2="137.2"/><text x="48" y="141.2" text-anchor="end">+20%</text>
+<line class="grid" x1="56" x2="620" y1="85.6" y2="85.6"/><text x="48" y="89.6" text-anchor="end">+40%</text>
+<line class="grid" x1="56" x2="620" y1="34.0" y2="34.0"/><text x="48" y="38.0" text-anchor="end">+60%</text>
+<text x="56.0" y="310" text-anchor="middle">1.1</text>
+<text x="197.0" y="310" text-anchor="middle">1.3</text>
+<text x="338.0" y="310" text-anchor="middle">1.5</text>
+<text x="479.0" y="310" text-anchor="middle">1.7</text>
+<text x="620.0" y="310" text-anchor="middle">1.9</text>
+<text x="338" y="332" text-anchor="middle">camera height assumed by the program (m)</text>
+<rect class="band" x="167.8" y="34" width="269.9" height="258"/>
+<polyline class="accent" points="56.0,308.1 63.1,305.5 70.1,303.0 77.2,300.4 84.2,297.8 91.3,295.2 98.3,292.5 105.4,289.8 112.4,287.1 119.5,284.4 126.5,281.7 133.5,278.9 140.6,276.1 147.6,273.3 154.7,270.5 161.7,267.6 168.8,264.8 175.8,261.9 182.9,258.9 189.9,256.0 197.0,253.0 204.0,250.0 211.1,247.0 218.1,244.0 225.2,240.9 232.2,237.8 239.3,234.7 246.4,231.6 253.4,228.4 260.5,225.3 267.5,222.1 274.6,218.8 281.6,215.6 288.7,212.3 295.7,209.0 302.7,205.7 309.8,202.4 316.8,199.0 323.9,195.6 330.9,192.2 338.0,188.8 345.0,185.3 352.1,181.9 359.1,178.4 366.2,174.9 373.2,171.3 380.3,167.7 387.3,164.2 394.4,160.5 401.4,156.9 408.5,153.3 415.5,149.6 422.6,145.9 429.6,142.1 436.7,138.4 443.7,134.6 450.8,130.8 457.8,127.0 464.9,123.2 471.9,119.3 479.0,115.4 486.0,111.5 493.1,107.6 500.1,103.6 507.2,99.6 514.2,95.6 521.3,91.6 528.3,87.6 535.4,83.5 542.5,79.4 549.5,75.3 556.5,71.1 563.6,67.0 570.6,62.8 577.7,58.6 584.8,54.4 591.8,50.1 598.9,45.8 605.9,41.5 613.0,37.2 620.0,32.9"/>
+<circle class="dot" cx="302.7" cy="205.7" r="4.5"/>
+<text x="310.7" y="221.7">default 1.45 m: -6.6%</text>
+<text x="433.7" y="48" text-anchor="end">shaded: 90% of phones held at 1.26 to 1.64 m</text>
+</svg>

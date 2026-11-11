@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint, types, vendor integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install ruff mypy numpy opencv-python-headless
+      - run: ruff check .
+      - run: mypy
+      - name: Bundled three.js matches its recorded hashes
+        run: python scripts/verify_vendor.py
+
+  tests:
+    name: Unit tests (Python and viewer logic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # CPU-only torch keeps the download small; the unit tests never run the model.
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+      - run: node --test "tests/js/*.test.mjs"
+
+  viewer:
+    name: Viewer in a real browser (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev]"
+      - run: python -m playwright install --with-deps chromium
+      # Hosted mode, the local-mode page, the sample scene, colour picker, console errors, phone layout, contrast.
+      - run: python -m pytest -q tests/test_ui.py
+        env:
+          VID3D_UI: "1"
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pip-audit
+      - run: pip-audit -r requirements/lock-py311.txt --no-deps --disable-pip
