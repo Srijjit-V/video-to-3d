@@ -88,7 +88,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
     - **Fix:** measure the sensitivity (thresholds from 15% to 45%, two trimming rules) and report it as part of the uncertainty range
       (see `docs/MATH.md`). Test: the range contains the truth for a box with furniture.
     - **If we skip it:** a single number hides an uncertainty of several centimetres.
-    - **Status:** open
+    - **Status:** fixed (the threshold is now a parameter; `uncertainty.estimate` redraws it from 15% to 45% and bootstraps the wall points, and the spread is part of the reported range; test with a sparse wall)
 
 11. **The floor finder and ceiling check are tested only on a clean synthetic box**
     - **Fix:** add adversarial clouds: a large tabletop above the floor, a dense shelf band, noise, a tilted camera path,
@@ -101,13 +101,13 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
     - **Problem:** a rigid reconstruction has one scale in theory, but drift, or a phone raised and lowered during the walk, breaks that.
     - **Fix:** compare the height of every camera above the fitted floor; a large spread lowers the confidence and is reported.
     - **If we skip it:** a stretched model is trusted as much as a good one.
-    - **Status:** open
+    - **Status:** fixed (`camera_height_consistency`: spread of camera heights above the floor is stored in `scene.json`, lowers confidence and raises a warning above 15%)
 
 ## Nice to have
 
 13. **A regression test that the bundled sample scenes stay tracked in git.** The `.gitignore` is fine today (verified), but
     `samples/` and `runs/` are ignored one folder away from `viewer/sample/`. **Status:** open
-14. **A range and a confidence score for every dimension** (new math, see Step 2 of the work plan and `docs/MATH.md`). **Status:** open
+14. **A range and a confidence score for every dimension** (new math, see Step 2 of the work plan and `docs/MATH.md`). **Status:** fixed (`uncertainty.py`: 90% ranges and a 0 to 100 confidence with reasons; `scene.json` keys `uncertainty`, `confidence`, `camera_height`)
 15. **Export the floor plan as SVG and JSON; a before/after calibration readout.** **Status:** open
 
 ## Verified fine (items that were suspected and are not problems)

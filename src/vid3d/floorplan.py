@@ -48,12 +48,15 @@ def dominant_yaw(points: np.ndarray, room_height: float | None) -> float:
     return float(fine[np.argmax([peakiness(d) for d in fine])])
 
 
-def _extent(coord: np.ndarray) -> tuple[float, float]:
+STRONG_FRAC = 0.3  # a histogram bin is a "wall" when it holds at least this share of the fullest bin
+
+
+def _extent(coord: np.ndarray, frac: float = STRONG_FRAC) -> tuple[float, float]:
     """Room span along one axis: outermost strong wall peaks in a 1-D histogram."""
     lo, hi = np.percentile(coord, [0.5, 99.5])
     bins = np.arange(lo - CELL, hi + 2 * CELL, CELL)
     h, e = np.histogram(coord, bins)
-    strong = np.nonzero(h >= 0.3 * h.max())[0]
+    strong = np.nonzero(h >= frac * h.max())[0]
     lo_s, hi_s = float(e[strong[0]] + CELL / 2), float(e[strong[-1]] + CELL / 2)
     # When one wall has far more points than the other (or is blurry), the strong peaks sit on a single
     # wall. Then the trimmed spread of the points is a better answer than refusing to measure.
@@ -109,7 +112,8 @@ def analyze(points: np.ndarray, room_height: float | None) -> dict:
     if min(length, width) < MIN_ROOM_SIDE_M:
         # Walls were only seen on one side along some direction: no honest size.
         return {"incomplete": True,
-                "reason": "Opposite walls were not both captured, so the room size can't be measured."}
+                "reason": "Opposite walls were not both captured, so the room size can't be measured.",
+                "at_least_m": [round(max(length, width), 2), round(min(length, width), 2)]}
     area = length * width
     support = wall_support(xz, [x0, z0, x1, z1])
     rectangular = support >= MIN_WALL_SUPPORT

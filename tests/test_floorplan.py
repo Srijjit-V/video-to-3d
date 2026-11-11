@@ -94,3 +94,12 @@ def test_quality_warnings_mention_a_non_rectangular_room():
              "scale_method": "camera height given: 1.5 m",
              "room": {"rectangular": False, "area_is_upper_bound": True, "wall_support": 0.75}}
     assert any("not a simple rectangle" in w for w in quality_warnings(scene))
+
+
+def test_incomplete_room_still_reports_what_was_seen_as_a_lower_bound(room):
+    one_side = room[room[:, 2] < 0.3]
+    r = floorplan.analyze(one_side, 2.6)
+    assert r["incomplete"] is True
+    long_side, short_side = r["at_least_m"]
+    assert long_side == pytest.approx(5.0, abs=0.2)
+    assert short_side < 1.0  # the missing direction: only the wall strip was seen

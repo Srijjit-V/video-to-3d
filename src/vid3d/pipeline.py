@@ -12,7 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import color, floorplan
+from . import color, floorplan, uncertainty
 from .depth import DepthModel, align_disparity, metric_depth
 from .frames import extract_frames
 from .geometry import View, backproject, find_floor, floor_frame, fuse, yaw_align
@@ -160,7 +160,9 @@ def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
     def to_metric(X):
         return ((X - origin) @ Rw.T) * scale
 
+    floor_sigma = uncertainty.floor_sigma_rel(find_floor, P, cams, up_hint)  # on the raw cloud, before scaling
     P, cams_m = to_metric(P), to_metric(cams)
+    cam_height = uncertainty.camera_height_consistency(cams_m[:, 1])
     room_h = floor.ceiling_height_raw * scale if floor.ceiling_height_raw else None
 
     # Rotate around the vertical axis so walls line up with x/z.
@@ -187,9 +189,24 @@ def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
         "palette": floorplan.palette(P, C, room, room_h),
         "seconds": round(time.time() - t0, 1),
     }
+    scene["camera_height"] = cam_height
+    scene["uncertainty"] = uncertainty.estimate(P, room_h, method, floor_sigma)
+    ranges = scene["uncertainty"]["ranges"]
+    half_width = None
+    if ranges:
+        lo, hi = ranges["area_m2"]
+        half_width = (hi - lo) / 2 / max(1e-9, (hi + lo) / 2)
+    scene["confidence"] = uncertainty.confidence(
+        method, sfm_stats["frames_registered"] / max(1, sfm_stats["frames_total"]), room, half_width,
+        cam_height["inconsistent"])
     scene["warnings"] = quality_warnings(scene)
     (out / "scene.json").write_text(json.dumps(scene, indent=2))
     log(f"done in {scene['seconds']} s -> {out}")
+    if scene["uncertainty"]["ranges"]:
+        rg = scene["uncertainty"]["ranges"]
+        log(f"range (90%): {rg['length_m'][0]}–{rg['length_m'][1]} x {rg['width_m'][0]}–{rg['width_m'][1]} m, "
+            f"area {rg['area_m2'][0]}–{rg['area_m2'][1]} m²; confidence {scene['confidence']['label']} "
+            f"({scene['confidence']['score']}/100)")
     if room.get("length_m"):
         log(f"room ≈ {room['length_m']} x {room['width_m']} m"
             + (f", height {room['height_m']} m" if room.get("height_m") else "")
@@ -210,6 +227,9 @@ def quality_warnings(scene: dict) -> list[str]:
         w.append("AI depth could not be matched on many frames; the model may be patchy.")
     if scene["room"].get("incomplete"):
         w.append(scene["room"]["reason"])
+    if scene.get("camera_height", {}).get("inconsistent"):
+        w.append("The phone height changed a lot during the walk, so a single scale may not fit the whole room. "
+                 "Hold the phone at one height.")
     if scene["room"].get("rectangular") is False:
         w.append("The room outline is not a simple rectangle (an L-shaped room, or a wall that was only partly "
                  "captured). The area shown is the bounding rectangle, so the real floor area is smaller.")
