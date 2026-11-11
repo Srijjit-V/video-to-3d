@@ -10,6 +10,7 @@ import http.server
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -107,15 +108,23 @@ def pipeline_command(video: Path, job_dir: Path, opts: dict) -> list[str]:
 class Jobs:
     """Runs one pipeline at a time (it needs most of the machine's memory)."""
 
-    def __init__(self, root: Path, command=pipeline_command):
-        self.root, self.command = root, command
+    def __init__(self, root: Path, command=pipeline_command, keep: int = 20):
+        self.root, self.command, self.keep = root, command, keep
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
 
     def busy(self) -> bool:
         return any(j.state == "running" for j in self.jobs.values())
 
+    def prune(self) -> None:
+        """Keep the newest `keep` finished jobs on disk; running jobs are never touched."""
+        done = sorted((j for j in self.jobs.values() if j.t1 is not None), key=lambda j: j.t1)
+        for j in done[:max(0, len(done) - self.keep)]:
+            shutil.rmtree(j.dir, ignore_errors=True)
+            del self.jobs[j.id]
+
     def start(self, job: Job, video: Path, opts: dict) -> None:
+        self.prune()
         env = dict(os.environ, PYTHONPATH=str(SRC_DIR), PYTHONSAFEPATH="1", PYTHONUNBUFFERED="1")
         job.proc = subprocess.Popen(self.command(video, job.dir, opts), stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, bufsize=1, env=env, cwd=SRC_DIR,
@@ -156,6 +165,7 @@ class ViewHandler(http.server.SimpleHTTPRequestHandler):
     """Serves the viewer at / and, for `vid3d view`, one run folder at /run/."""
 
     mode = "view"
+    timeout = 60  # seconds; a client that stalls mid-request is dropped instead of holding a thread forever
 
     def __init__(self, *a, run_dir: Path | None = None, **kw):
         self.run_dir = run_dir

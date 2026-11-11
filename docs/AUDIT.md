@@ -54,7 +54,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Fix:** a `modulepreload` link with a SHA-384 `integrity` attribute, a script that checks the vendored file against the
      hash of the official npm package, and a test that fails when the two disagree.
    - **If we skip it:** a tampered vendor file would run unnoticed.
-   - **Status:** open
+   - **Status:** fixed (`modulepreload` with SHA-384 integrity in `index.html`; `scripts/verify_vendor.py` and `viewer/vendor/three/HASHES.json`; `three.module.min.js` compared byte for byte with the official `three@0.160.0` npm package; tests in `tests/test_vendor_integrity.py`)
 
 6. **Local server: no socket timeout, no retention limit, thin path-traversal tests**
    - **What this is:** `ServeHandler` and `ViewHandler`.
@@ -62,7 +62,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
      traversal is tested for `/run/` but not for `/jobs/`.
    - **Fix:** a 60 s socket timeout; keep only the 20 newest finished jobs; tests for encoded, doubled and backslash traversal on `/jobs/`.
    - **If we skip it:** slow-client stalls and a disk that fills up over weeks of use.
-   - **Status:** open
+   - **Status:** fixed (60 s socket timeout, newest 20 finished jobs kept, 8 traversal cases on `/jobs/`; the traversal tests passed already, so that part was a confirmed gap in tests only)
 
 7. **No lockfile, no dependency audit, no CI, no SECURITY.md**
    - **Problem:** installs are not reproducible and known-vulnerable dependencies would go unnoticed.

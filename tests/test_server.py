@@ -259,3 +259,47 @@ def test_cancelled_job_also_removes_private_files(tmp_path):
     jobs.cancel(job)
     _wait_finished(job)
     assert not (job.dir / "frames").exists() and not (job.dir / "video.mp4").exists()
+
+
+# ---------- hardening: traversal on /jobs/, idle sockets, finished-job retention ----------
+
+@pytest.mark.parametrize("path", [
+    "/jobs/../../etc/passwd",
+    "/jobs/%2e%2e/%2e%2e/secret.txt",
+    "/jobs/aaaaaaaaaaaa/../../secret.txt",
+    "/jobs/aaaaaaaaaaaa/..%2f..%2fsecret.txt",
+    "/jobs/aaaaaaaaaaaa/%5c..%5csecret.txt",
+    "/jobs//etc/passwd",
+    "/jobs/aaaaaaaaaaaa/video.mp4",  # uploads are private even before they are deleted
+    "/jobs/aaaaaaaaaaaa/work/sfm.npz",
+])
+def test_jobs_route_never_serves_anything_but_the_result_files(serve_server, tmp_path, path):
+    (tmp_path / "secret.txt").write_text("nope")
+    job_dir = tmp_path / "jobs" / "aaaaaaaaaaaa"
+    (job_dir / "work").mkdir(parents=True)
+    (job_dir / "video.mp4").write_bytes(b"private")
+    (job_dir / "work" / "sfm.npz").write_bytes(b"private")
+    status, body, _ = serve_server.call(path)
+    assert status >= 400
+    assert b"nope" not in body and b"private" not in body and b"root:" not in body
+
+
+def test_handlers_drop_idle_connections():
+    assert 0 < ViewHandler.timeout <= 120
+
+
+def test_old_finished_jobs_are_pruned_but_running_and_new_ones_stay(tmp_path):
+    jobs = Jobs(tmp_path, command=fake(OK), keep=2)
+    made = []
+    for i in range(5):
+        j = Job(f"{i:012x}", tmp_path / f"{i:012x}")
+        j.dir.mkdir()
+        j.state, j.t1 = "done", 100.0 + i
+        jobs.jobs[j.id] = j
+        made.append(j)
+    running = Job("f" * 12, tmp_path / ("f" * 12))
+    running.dir.mkdir()
+    jobs.jobs[running.id] = running
+    jobs.prune()
+    assert sorted(jobs.jobs) == sorted([made[3].id, made[4].id, running.id])
+    assert not made[0].dir.exists() and made[4].dir.exists() and running.dir.exists()
