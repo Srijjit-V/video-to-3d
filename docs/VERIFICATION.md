@@ -47,6 +47,30 @@ The camera solver is not fully deterministic: repeated runs on this video differ
 - Floor and ceiling finding: 8 adversarial synthetic rooms (tabletop, sofa top, noise, sparse floor, wrong up hint, doorway strays, partial ceiling, mezzanine). All passed.
 - Security fixes each have a test that fails without the fix (video limits, file name only, deleted private files, pinned model, integrity hash, traversal cases, socket timeout, job pruning).
 
+## Phase 0 spike: running parts of the pipeline in the browser (2026-11-11)
+
+Measured once, on one machine (MacBook, Apple GPU, 8 GB, Chrome 157 headed, WebGPU available), with the synthetic room.
+Scripts: `scripts/spike/depth_spike.py`, `colmap_spike.py`, `gate.py`. One run each; these are first measurements, not benchmarks.
+
+| What | Result |
+|---|---|
+| Depth Anything V2 Small, q4f16 ONNX (`onnx-community/depth-anything-v2-small`, transformers.js 4.3.2) | file 19.1 MB (`Content-Length` 19,126,267) |
+| Depth, WebGPU, 640 x 480 frame | load 5.3 s; frames 2254 (first), 374, 355, 649 ms |
+| Depth, WASM, same frame | load 1.0 s; frames 6580, 5893, 6126, 6170 ms (about 6 s per frame, so 60 frames is about 6 minutes) |
+| colmap-wasm 0.1.0 (BSD-3, unofficial COLMAP 4.2.1 build, 7.2 MB package), 60 frames 640 x 480, **all pairs** (default) | 139 s (mapping 130 s), 60 of 60 placed, **but the camera path did not match pycolmap's** (similarity-fit residual 3.0 units on a 7-unit path) and the room came out 1.25 x 2.65 m for a 4 x 5 m room. **Fails the gate.** |
+| colmap-wasm, same frames, **sequential pairs** (window 8, loop) | 24 s (features 5.2 s, matching 0.9 s, mapping 18 s), 60 of 60 placed, focal 457.1 px (pycolmap: 456.6) |
+| Room size from those poses, rest of the Python pipeline, true camera height 1.5 m | 4.0 x 5.0 m (0.0%, 0.0%), area range 18.0 to 22.2 m² contains the true 20 m² |
+| Same, default 1.45 m assumed | 3.9 x 4.85 m (-2.5%, -3.0%), area -5.4%, range 13.9 to 24.4 m² contains truth |
+
+What this says: depth runs in the browser (WebGPU about 0.4 s per frame after warm-up; WASM is about 15 times slower).
+colmap-wasm is accurate enough **only with sequential pairing**; with its default all-pairs matching it failed on this video. So the browser camera solver is
+usable for walkthrough video with that setting, and Hybrid (server) stays the safer default until more rooms are tried.
+The poses were fed to the Python stages through the new sfm payload (`src/vid3d/sfm_payload.py`, `process(..., sfm_payload=...)`), the seam the browser and server modes will share.
+`k1` is 0 for colmap-wasm (it estimates a SIMPLE_PINHOLE camera, no lens distortion).
+
+Not tested: Safari, any phone browser, WebGPU-less machines, other GPUs, more than one room, depth quality of the q4f16 model compared with the PyTorch model (only speed and size were measured).
+The Modal limits and prices below are from search results, not from reading Modal's own docs; the request-body limit was not found. Check before relying on them.
+
 ## Not verified
 
 - **Real phone footage.** Every accuracy number is from the synthetic room. The scale prior (8% when assumed) is a judgement, not a measurement. See [BENCHMARK.md](BENCHMARK.md) for the protocol.

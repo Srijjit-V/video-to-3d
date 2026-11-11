@@ -17,6 +17,7 @@ from .depth import DepthModel, align_disparity, metric_depth
 from .frames import extract_frames
 from .geometry import View, backproject, find_floor, floor_frame, fuse, yaw_align
 from .privacy import check_private_dirs, clean_intermediates
+from .sfm_payload import load_payload, payload_to_npz
 
 DEFAULT_CAMERA_HEIGHT_M = 1.45  # typical height of a phone held while walking
 
@@ -66,13 +67,13 @@ def video_label(video: Path) -> str:
 
 def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | None = None,
             ceiling_height: float | None = None, stride: int = 4, fov: float = 70.0,
-            keep_intermediate: bool = False) -> dict:
+            keep_intermediate: bool = False, sfm_payload: Path | None = None) -> dict:
     """Run the six stages. The frames and COLMAP work folder are deleted at the end (success or
     failure) unless keep_intermediate is set: they are photos of the user's room."""
     out.mkdir(parents=True, exist_ok=True)
     check_private_dirs(out, keep_intermediate)
     try:
-        return _process(video, out, n_frames, camera_height, ceiling_height, stride, fov)
+        return _process(video, out, n_frames, camera_height, ceiling_height, stride, fov, sfm_payload)
     finally:
         if not keep_intermediate:
             left = clean_intermediates(out)
@@ -82,7 +83,7 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
 
 
 def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
-             ceiling_height: float | None, stride: int, fov: float) -> dict:
+             ceiling_height: float | None, stride: int, fov: float, sfm_payload: Path | None = None) -> dict:
     t0 = time.time()
     out.mkdir(parents=True, exist_ok=True)
     frames_dir, work = out / "frames", out / "work"
@@ -91,19 +92,27 @@ def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
     kept = extract_frames(video, frames_dir, target=n_frames)
     log(f"      {len(kept)} frames kept")
 
-    log("[2/6] solving camera path with COLMAP (separate process)")
-    # -P / PYTHONSAFEPATH: don't add the current folder to the import path, so a
-    # stray file there (e.g. a "numpy.py") can't be imported in place of the real one.
-    src_dir = Path(__file__).resolve().parents[1]
-    env = dict(os.environ, PYTHONPATH=str(src_dir), PYTHONSAFEPATH="1")
-    # fixed argument list (interpreter, -m module, our own folders); no shell, no user text
-    cmd = [sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()), str(fov)]
-    sfm = subprocess.run(cmd, env=env, cwd=src_dir, stderr=subprocess.PIPE, text=True)  # noqa: S603
-    if sfm.returncode != 0:
-        # sfm.py exits 3 with an "error:" line when it has a message meant for people.
-        said = [l[6:] for l in sfm.stderr.splitlines() if l.startswith("error: ")]
-        raise RuntimeError(said[-1] if said else "The camera-path step crashed. Try a different video.")
-    sfm_stats = json.loads((work / "sfm_stats.json").read_text())
+    if sfm_payload is not None:
+        log("[2/6] camera path supplied as an sfm payload (solved elsewhere)")
+        try:
+            sfm_stats = payload_to_npz(load_payload(sfm_payload), work)
+        except (ValueError, OSError) as e:
+            raise RuntimeError(f"The camera-path payload was refused: {e}") from e
+        (work / "sfm_stats.json").write_text(json.dumps(sfm_stats))
+    else:
+        log("[2/6] solving camera path with COLMAP (separate process)")
+        # -P / PYTHONSAFEPATH: don't add the current folder to the import path, so a
+        # stray file there (e.g. a "numpy.py") can't be imported in place of the real one.
+        src_dir = Path(__file__).resolve().parents[1]
+        env = dict(os.environ, PYTHONPATH=str(src_dir), PYTHONSAFEPATH="1")
+        # fixed argument list (interpreter, -m module, our own folders); no shell, no user text
+        cmd = [sys.executable, "-P", "-m", "vid3d.sfm", str(frames_dir.resolve()), str(work.resolve()), str(fov)]
+        sfm = subprocess.run(cmd, env=env, cwd=src_dir, stderr=subprocess.PIPE, text=True)  # noqa: S603
+        if sfm.returncode != 0:
+            # sfm.py exits 3 with an "error:" line when it has a message meant for people.
+            said = [l[6:] for l in sfm.stderr.splitlines() if l.startswith("error: ")]
+            raise RuntimeError(said[-1] if said else "The camera-path step crashed. Try a different video.")
+        sfm_stats = json.loads((work / "sfm_stats.json").read_text())
     views, k1s, obs = load_views(work / "sfm.npz")
     log(f"      {sfm_stats['frames_registered']}/{sfm_stats['frames_total']} frames placed")
 

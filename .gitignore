@@ -32,3 +32,6 @@ runs/
 samples/
 output/
 graphify-out/
+
+# Phase 0 spike scratch (frames, node_modules, results)
+scripts/spike/_work/
