@@ -63,7 +63,7 @@
       </details>
 
       <div class="actions">
-        <button id="sample-btn" class="btn btn-ghost" type="button">Open the sample room</button>
+        <button id="sample-btn" class="btn btn-ghost" type="button">Run the demo</button>
         <a class="btn btn-quiet" href="https://github.com/Srijjit-V/video-to-3d" rel="noopener">View the code</a>
       </div>
     </div>
@@ -116,9 +116,17 @@
       </div>
       <p id="status" class="muted small"></p>
 
+      <section id="demo" class="demo" aria-labelledby="h-demo" hidden>
+        <h3 id="h-demo">Guided demo</h3>
+        <p id="demo-note" class="muted small"></p>
+        <ol id="demo-steps" class="demo-steps"></ol>
+        <button id="demo-switch" class="btn btn-ghost small-btn" type="button"></button>
+      </section>
+
       <section aria-labelledby="h-room">
         <h3 id="h-room" class="sr-only">Size</h3>
         <p id="dims" class="big tabular">–</p>
+        <div id="confidence" class="confidence" hidden></div>
         <table id="stats" class="stats"></table>
         <div id="warnings" class="warnings"></div>
       </section>
@@ -161,6 +169,7 @@
           <button id="cal-btn" class="btn btn-ghost" type="button">Apply</button>
           <button id="uncal-btn" class="btn btn-quiet" type="button">Undo</button>
         </div>
+        <p id="cal-readout" class="muted small tabular" aria-live="polite" hidden></p>
       </section>
 
       <section aria-labelledby="h-display">

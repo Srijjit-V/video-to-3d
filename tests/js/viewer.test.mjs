@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parsePly } from "../../viewer/js/ply.js";
 import { colorize, availableModes, rampColor, percentile } from "../../viewer/js/colors.js";
-import { fmtLen, toHex, fromHex, mmss, esc, textOn } from "../../viewer/js/format.js";
+import { demoSteps } from "../../viewer/js/demo.js";
+import { fmtLen, toHex, fromHex, mmss, esc, textOn, fmtRange, confidenceView } from "../../viewer/js/format.js";
 
 function makePly(rows, withViews = true) {
   const head = `ply\nformat binary_little_endian 1.0\nelement vertex ${rows.length}\nproperty float x\nproperty float y\nproperty float z\n` +
@@ -86,4 +87,33 @@ test("formatting helpers", () => {
   assert.equal(esc('<img src=x onerror="a">'), "&lt;img src=x onerror=&quot;a&quot;&gt;");
   assert.equal(textOn("#ffffff"), "#07090d");
   assert.equal(textOn("#101010"), "#f4f6fa");
+});
+
+test("fmtRange shows two-sided and open-ended ranges, scaled by calibration", () => {
+  assert.equal(fmtRange([3.8, 4.2], 1, "m"), "3.8 to 4.2 m");
+  assert.equal(fmtRange([2.7, null], 1, "m"), "at least 2.7 m");
+  assert.equal(fmtRange([10, 20], 4, "m²"), "40 to 80 m²");
+  assert.equal(fmtRange(null, 1, "m"), "–");
+});
+
+test("confidenceView gives a label, a score and escapes nothing it does not need to", () => {
+  const v = confidenceView({ score: 70, label: "medium", summary: "Good for planning.", reasons: ["a", "b"] });
+  assert.deepEqual([v.label, v.text, v.reasons.length], ["medium", "Confidence: medium (70/100)", 2]);
+  assert.equal(confidenceView(null), null);
+  assert.equal(confidenceView({ score: "x", label: "bogus" }), null);
+});
+
+test("demoSteps takes expected values from the scene's own truth, and is null for ordinary scenes", () => {
+  const truth = { length_m: 5, width_m: 4, area_m2: 20, door: { height_m: 2.03 } };
+  const good = demoSteps({ demo: { kind: "good", truth }, room: { length_m: 4.05, width_m: 5 },
+    uncertainty: { ranges: { area_m2: [18.1, 22.2] } }, palette: { walls: [{ hex: "#8f618d" }, { hex: "<b>x</b>" }] } });
+  assert.equal(good.length, 6);
+  assert.match(good[0].expect, /really 5\.0 × 4\.0 m/);
+  assert.match(good[1].expect, /2\.03/);
+  assert.match(good[4].expect, /#8f618d/);
+  assert.doesNotMatch(good[4].expect, /<b>/); // untrusted palette values are filtered to real hex colours
+  const bad = demoSteps({ demo: { kind: "bad", truth }, uncertainty: { ranges: { width_m: [2.57, null] } } });
+  assert.equal(bad.length, 3);
+  assert.match(bad[1].expect, /at least 2\.57 m/);
+  assert.equal(demoSteps({ room: {} }), null);
 });

@@ -386,3 +386,42 @@ def test_local_mode_end_to_end_with_live_progress(desktop, local_url):
     assert [s["elapsed"] for s in snaps] == sorted(s["elapsed"] for s in snaps) and final["elapsed"] > 30
     assert re.fullmatch(r"\d\.\d\d × \d\.\d\d m", pg.inner_text("#dims"))
     assert desktop.errors == []
+
+
+def test_demo_shows_guided_steps_ranges_confidence_and_the_bad_capture(desktop, hosted_url):
+    pg = desktop.page
+    open_sample(desktop, hosted_url)
+    assert pg.is_visible("#demo")
+    assert pg.locator("#demo-steps li").count() == 6
+    steps = pg.inner_text("#demo-steps")
+    assert "5.0 × 4.0 m" in steps and "2.03" in steps  # expected values come from scene.json's truth
+    stats = pg.inner_text("#stats")
+    assert "Area range" in stats and " to " in stats
+    assert pg.inner_text("#confidence").startswith("Confidence: ")
+    assert pg.get_attribute("#confidence", "data-level") in ("high", "medium")
+
+    # measure two points, calibrate: the matching steps tick and a before/after readout appears
+    pg.keyboard.press("m")
+    a, b = points_on_screen(desktop, [420, 120, 1400, 760])
+    pg.mouse.click(a["x"], a["y"])
+    pg.mouse.click(b["x"], b["y"])
+    assert "done" in pg.get_attribute('#demo-steps [data-step="measure"]', "class")
+    pg.fill("#true-len", "2.03")
+    pg.click("#cal-btn")
+    assert "done" in pg.get_attribute('#demo-steps [data-step="calibrate"]', "class")
+    assert "Before:" in pg.inner_text("#cal-readout") and "After your calibration" in pg.inner_text("#cal-readout")
+    shot(pg, "desktop-demo")
+
+    # the deliberately bad capture: honest warnings, open-ended range, low confidence
+    pg.click("#demo-switch")
+    until(pg, "window.__vid3d.meta && window.__vid3d.meta.demo && window.__vid3d.meta.demo.kind === 'bad'", 20000)
+    pg.wait_for_timeout(400)
+    assert pg.inner_text("#dims").startswith("at least")
+    assert pg.get_attribute("#confidence", "data-level") == "low"
+    assert "never filmed" in pg.inner_text("#warnings")
+    assert "at least" in pg.inner_text("#stats")
+    assert pg.locator("#demo-steps li").count() == 3
+    shot(pg, "desktop-demo-bad")
+    pg.click("#demo-switch")
+    until(pg, "window.__vid3d.meta.demo.kind === 'good'", 20000)
+    assert desktop.errors == []

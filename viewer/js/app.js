@@ -4,7 +4,8 @@ import { SceneView } from "./scene.js";
 import { parsePly } from "./ply.js";
 import { RAMP, availableModes } from "./colors.js";
 import { detectMode, uploadVideo, getJob, cancelJob } from "./jobs.js";
-import { esc, fmtLen, mmss, textOn } from "./format.js";
+import { demoSteps, markDone } from "./demo.js";
+import { confidenceView, esc, fmtLen, fmtRange, mmss, textOn } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 const VIDEO = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
@@ -218,14 +219,26 @@ function openScene(data, m, plan) {
 
 function renderPanel() {
   const r = meta.room || {}, cal = view.cal;
-  $("dims").textContent = r.length_m ? `${(r.length_m * cal).toFixed(2)} × ${(r.width_m * cal).toFixed(2)} m` : "Room not fully captured";
+  renderConfidence();
+  renderDemo();
+  const ro = $("cal-readout");
+  ro.hidden = cal === 1 || !r.length_m;
+  if (!ro.hidden) ro.textContent = `Before: ${r.length_m.toFixed(2)} × ${r.width_m.toFixed(2)} m. After your calibration (×${cal.toFixed(3)}): ${(r.length_m * cal).toFixed(2)} × ${(r.width_m * cal).toFixed(2)} m.`;
+  const atLeast = r.missing_wall ? "at least " : "";
+  $("dims").textContent = r.length_m ? `${atLeast}${(r.length_m * cal).toFixed(2)} × ${(r.width_m * cal).toFixed(2)} m`
+    : r.at_least_m ? `at least ${(r.at_least_m[0] * cal).toFixed(1)} × ${(r.at_least_m[1] * cal).toFixed(1)} m` : "Room not fully captured";
   const rows = [
     ["Height", r.height_m ? fmtLen(r.height_m, cal) : "ceiling not seen"],
-    ["Area", r.area_m2 ? `${(r.area_m2 * cal * cal).toFixed(1)} m² · ${(r.area_ft2 * cal * cal).toFixed(0)} ft²` : "–"],
+    ["Area", r.area_m2 ? `${r.missing_wall ? "at least " : ""}${(r.area_m2 * cal * cal).toFixed(1)} m² · ${(r.area_ft2 * cal * cal).toFixed(0)} ft²` : "–"],
     ["Frames used", meta.frames_extracted ? `${meta.frames_registered} / ${meta.frames_extracted}` : "–"],
     ["Points", meta.points.toLocaleString()],
     ["Solve error", meta.sfm_reprojection_error_px != null ? `${meta.sfm_reprojection_error_px} px` : "–"],
   ];
+  const rg = meta.uncertainty?.ranges;
+  if (rg) {
+    rows.splice(0, 0, ["Length range", fmtRange(rg.length_m, cal, "m", 2)], ["Width range", fmtRange(rg.width_m, cal, "m", 2)],
+      ["Area range", fmtRange(rg.area_m2, cal * cal, "m²")]);
+  }
   $("stats").innerHTML = rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join("");
   // The scale guess is covered by the calibration tool, so drop that warning once calibrated.
   const warns = (Array.isArray(meta.warnings) ? meta.warnings : []).map(String).filter((w) => cal === 1 || !w.startsWith("Real-world scale"));
@@ -234,6 +247,44 @@ function renderPanel() {
   $("status").textContent = meta.seconds ? `Processed in ${Math.round(meta.seconds)} s` : "";
   renderPalette();
   renderLegend();
+}
+
+const demoDone = new Set();
+
+function renderDemo() {
+  const steps = demoSteps(meta), box = $("demo");
+  box.hidden = !steps;
+  if (!steps) return;
+  const bad = meta.demo.kind === "bad";
+  $("demo-note").textContent = bad
+    ? "A deliberately bad capture: the walk never reached the far wall. See how the program reacts."
+    : "Follow the steps. Each one says what you should see, and the true values are known.";
+  $("demo-steps").replaceChildren(...steps.map((st) => {
+    const li = document.createElement("li");
+    li.dataset.step = st.id;
+    li.className = demoDone.has(st.id) ? "done" : "";
+    const a = document.createElement("span"), b = document.createElement("small");
+    a.textContent = st.text; b.textContent = `Expect: ${st.expect}`;
+    li.append(a, b);
+    return li;
+  }));
+  const sw = $("demo-switch");
+  sw.textContent = bad ? "Back to the good scan" : "Try the bad capture";
+  sw.onclick = () => loadUrls(bad ? "sample" : "sample-bad");
+  if (bad) { stepDone("warn"); stepDone("range"); }
+}
+
+function stepDone(id) {
+  if (markDone(demoDone, id)) $("demo-steps")?.querySelector(`[data-step="${id}"]`)?.classList.add("done");
+}
+
+function renderConfidence() {
+  const c = confidenceView(meta.confidence), box = $("confidence");
+  box.hidden = !c;
+  if (!c) return;
+  box.dataset.level = c.label;
+  box.replaceChildren(...[["strong", c.text], ["span", c.summary], ...c.reasons.map((x) => ["small", x])]
+    .map(([tag, text]) => { const e = document.createElement(tag); e.textContent = text; return e; }));
 }
 
 function renderPalette() {
@@ -307,7 +358,7 @@ function wireScene() {
     tool: (t) => { $("tool-measure").setAttribute("aria-pressed", String(t === "measure")); $("tool-pick").setAttribute("aria-pressed", String(t === "pick")); },
     top: (on) => $("tool-top").setAttribute("aria-pressed", String(on)),
     legend: (l) => { lastLegend = l; if (meta) renderLegend(); },
-    measures: (list) => $("measures").replaceChildren(...list.map((t) => { const li = document.createElement("li"); li.textContent = t; return li; })),
+    measures: (list) => { if (list.length) stepDone("measure"); $("measures").replaceChildren(...list.map((t) => { const li = document.createElement("li"); li.textContent = t; return li; })) },
     picked: (p) => {
       $("pick-readout").hidden = false;
       $("pick-swatch").style.backgroundColor = p.hex;
@@ -315,12 +366,13 @@ function wireScene() {
       $("pick-hex").textContent = p.hex;
       $("pick-extra").textContent = `Height ${(p.height * view.cal).toFixed(2)} m` + (p.views != null ? ` · seen in ${p.views} frames` : "");
       $("pick-copy").dataset.hex = p.hex;
+      stepDone("pick");
       say(`Picked ${p.hex}`);
     },
   });
   $("tool-measure").addEventListener("click", () => view.setTool("measure"));
   $("tool-pick").addEventListener("click", () => view.setTool("pick"));
-  $("tool-top").addEventListener("click", () => view.toggleTop());
+  $("tool-top").addEventListener("click", () => { view.toggleTop(); stepDone("top"); });
   $("tool-reset").addEventListener("click", () => view.resetView());
   $("tool-panel").addEventListener("click", () => {
     const p = $("panel");
@@ -329,7 +381,7 @@ function wireScene() {
   });
   $("new-btn").addEventListener("click", () => show("start"));
   $("clear-btn").addEventListener("click", () => view.clearMeasures());
-  $("color-mode").addEventListener("change", (e) => view.setColorMode(e.target.value));
+  $("color-mode").addEventListener("change", (e) => { view.setColorMode(e.target.value); if (e.target.value === "height") stepDone("height"); });
   $("pick-copy").addEventListener("click", (e) => copyHex(e.currentTarget.dataset.hex));
   $("pt-size").addEventListener("input", (e) => view.setPointSize(+e.target.value));
   $("show-cams").addEventListener("change", (e) => view.showCameras(e.target.checked));
@@ -340,6 +392,7 @@ function wireScene() {
     if (!view.measuresList.length) return say("Measure something first (press M, then click two points).");
     if (!(t > 0)) return say("Type the true length in metres.");
     setCal(view.calibrateLast(t));
+    stepDone("calibrate");
   });
   $("uncal-btn").addEventListener("click", () => setCal(1));
 }
