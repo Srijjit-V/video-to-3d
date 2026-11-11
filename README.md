@@ -135,7 +135,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 
 Measured on 2026-11-10 (details in [docs/VERIFICATION.md](docs/VERIFICATION.md)):
 
-- **131** Python tests pass (15 opt-in skipped); **16** Node tests; **13** browser tests; ruff, mypy and `pip-audit` clean.
+- **131** Python tests pass (16 opt-in skipped); **16** Node tests; **13** browser tests; ruff, mypy and `pip-audit` clean.
 - Synthetic 5.0 x 4.0 m room: with the true camera height, 4.05 x 5.00 m (+1.3%, 0%) and the area range 18.1 to 22.2 m² contained the true 20 m²;
   with the default 1.45 m assumed, 3.90 x 4.85 m (-2.5%, -3.0%) and the range 13.9 to 24.4 m² contained it too.
 - One run per setting; the camera solver varies by a few percent between runs.
