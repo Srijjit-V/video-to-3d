@@ -36,7 +36,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
    - **Fix:** delete `frames/`, `work/` and the uploaded copy when the job ends (success, error or cancel); keep only `cloud.ply`,
      `scene.json` and `floorplan.png`. `--keep-intermediate` turns this off for debugging. The user's own input file is never deleted.
    - **If we skip it:** the tool quietly builds an archive of the inside of the user's home, with location data.
-   - **Status:** fixed (`privacy.py`; the pipeline cleans in `finally`, the server cleans after cancel too; `--keep-intermediate` opts out)
+   - **Status:** fixed (`privacy.py`; the pipeline deletes `frames/` and `work/` in `finally`, the server also after a cancel and deletes the upload; `--keep-intermediate` opts out. A run refuses to start if `frames/` or `work/` already exist or are links, and warns loudly if it could not delete them. This was tightened after an automated review pointed out that skipping pre-existing folders would silently leave room photos behind)
 
 4. **The depth model is downloaded with no pinned revision**
    - **What this is:** `from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")`.
@@ -94,7 +94,7 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
     - **Fix:** add adversarial clouds: a large tabletop above the floor, a dense shelf band, noise, a tilted camera path,
       a partly visible ceiling, and stray points through a doorway.
     - **If we skip it:** real rooms are not boxes; failures would show up only on the first real video.
-    - **Status:** open
+    - **Status:** fixed (8 adversarial cases added in `tests/test_geometry.py`: tabletop, sofa top, 2 cm noise, sparse floor, wrong up hint by 10 degrees, doorway strays, partly seen ceiling, mezzanine slab. All passed first time, so the finder had no hidden bug on these; the gap was only in coverage)
 
 12. **One global scale is applied to everything**
     - **What this is:** `s = h / h_raw`, one number for the whole model.

@@ -182,20 +182,31 @@ def test_depth_model_is_pinned_to_a_commit_and_safetensors(monkeypatch):
     assert seen[1][1].get("use_safetensors") is True
 
 
-def test_clean_intermediates_leaves_folders_it_did_not_create(tmp_path):
-    # `--out` may point at a folder that already has the user's own "work" directory.
-    from vid3d.privacy import clean_intermediates, existing_private_dirs
+def test_a_run_refuses_to_start_when_frames_or_work_already_exist(tmp_path):
+    from vid3d.privacy import check_private_dirs
 
     (tmp_path / "work").mkdir()
     (tmp_path / "work" / "mine.txt").write_text("keep me")
-    before = existing_private_dirs(tmp_path)
-    (tmp_path / "frames").mkdir()  # created by the run
-    clean_intermediates(tmp_path, skip=before)
+    with pytest.raises(RuntimeError, match="already exists"):
+        check_private_dirs(tmp_path, keep_intermediate=False)
+    check_private_dirs(tmp_path, keep_intermediate=True)  # the user asked to keep and reuse them
     assert (tmp_path / "work" / "mine.txt").exists()
-    assert not (tmp_path / "frames").exists()
 
 
-def test_clean_intermediates_never_follows_a_symlink(tmp_path):
+def test_a_run_refuses_to_write_through_a_link(tmp_path):
+    from vid3d.privacy import check_private_dirs
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "frames").symlink_to(elsewhere, target_is_directory=True)
+    for keep in (False, True):
+        with pytest.raises(RuntimeError, match="is a link"):
+            check_private_dirs(out, keep_intermediate=keep)
+
+
+def test_clean_intermediates_never_follows_a_symlink_and_reports_what_it_left(tmp_path):
     from vid3d.privacy import clean_intermediates
 
     target = tmp_path / "elsewhere"
@@ -204,5 +215,6 @@ def test_clean_intermediates_never_follows_a_symlink(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
     (out / "frames").symlink_to(target, target_is_directory=True)
-    clean_intermediates(out)
-    assert (target / "precious.txt").exists()
+    (out / "work").mkdir()
+    assert clean_intermediates(out) == ["frames"]
+    assert (target / "precious.txt").exists() and not (out / "work").exists()

@@ -14,6 +14,22 @@ import cv2
 import numpy as np
 
 PX_PER_M = 160
+DOOR = {"wall": "z=0", "x_from_m": 1.6, "width_m": 0.9, "height_m": 2.03}  # a standard interior door, known size
+
+
+def paint_door(tex: np.ndarray, room_h: float) -> np.ndarray:
+    """Draw a brown door with a light frame and a handle on the wall texture (u = x, v counts down from the top)."""
+    img = tex.copy()
+    x0 = int(DOOR["x_from_m"] * PX_PER_M)
+    x1 = x0 + int(DOOR["width_m"] * PX_PER_M)
+    y0 = int((room_h - DOOR["height_m"]) * PX_PER_M)
+    y1 = tex.shape[0] - 1
+    cv2.rectangle(img, (x0 - 6, y0 - 6), (x1 + 6, y1), (225, 225, 220), -1)  # frame
+    cv2.rectangle(img, (x0, y0), (x1, y1), (40, 70, 110), -1)  # door leaf (BGR brown)
+    cv2.rectangle(img, (x0 + 14, y0 + 14), (x1 - 14, y0 + (y1 - y0) // 2 - 10), (55, 90, 135), 3)
+    cv2.rectangle(img, (x0 + 14, y0 + (y1 - y0) // 2 + 10), (x1 - 14, y1 - 14), (55, 90, 135), 3)
+    cv2.circle(img, (x1 - 18, y0 + int(0.95 * PX_PER_M)), 7, (60, 200, 230), -1)  # handle
+    return img
 
 
 def texture(w_m: float, h_m: float, seed: int, base, kind: str) -> np.ndarray:
@@ -45,7 +61,7 @@ def render_video(out: Path, L=5.0, W=4.0, H=2.6, cam_h=1.5, frames=180, size=(64
     faces = {  # (axis, side): texture, (u-axis, v-axis), shading
         (0, 0): (texture(W, H, 1, (150, 160, 175), "wall"), (2, 1), 0.85),
         (0, 1): (texture(W, H, 2, (175, 150, 140), "wall"), (2, 1), 0.95),
-        (2, 0): (texture(L, H, 3, (140, 175, 150), "wall"), (0, 1), 1.0),
+        (2, 0): (paint_door(texture(L, H, 3, (140, 175, 150), "wall"), H), (0, 1), 1.0),
         (2, 1): (texture(L, H, 4, (170, 170, 140), "wall"), (0, 1), 0.8),
         (1, 0): (texture(L, W, 5, (60, 95, 140), "floor"), (0, 2), 0.7),
         (1, 1): (texture(L, W, 6, (215, 215, 215), "ceiling"), (0, 2), 1.05),
@@ -92,7 +108,7 @@ def render_video(out: Path, L=5.0, W=4.0, H=2.6, cam_h=1.5, frames=180, size=(64
         vw.write(frame)
     vw.release()
     truth = {"length_m": L, "width_m": W, "height_m": H, "camera_height_m": cam_h,
-             "area_m2": L * W, "area_ft2": round(L * W * 10.7639, 1)}
+             "area_m2": L * W, "area_ft2": round(L * W * 10.7639, 1), "door": DOOR}
     out.with_suffix(".truth.json").write_text(json.dumps(truth, indent=2))
     return truth
 

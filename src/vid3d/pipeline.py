@@ -16,7 +16,7 @@ from . import color, floorplan, uncertainty
 from .depth import DepthModel, align_disparity, metric_depth
 from .frames import extract_frames
 from .geometry import View, backproject, find_floor, floor_frame, fuse, yaw_align
-from .privacy import clean_intermediates, existing_private_dirs
+from .privacy import check_private_dirs, clean_intermediates
 
 DEFAULT_CAMERA_HEIGHT_M = 1.45  # typical height of a phone held while walking
 
@@ -69,12 +69,16 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
             keep_intermediate: bool = False) -> dict:
     """Run the six stages. The frames and COLMAP work folder are deleted at the end (success or
     failure) unless keep_intermediate is set: they are photos of the user's room."""
-    preexisting = existing_private_dirs(out)  # never delete a folder that was there before this run
+    out.mkdir(parents=True, exist_ok=True)
+    check_private_dirs(out, keep_intermediate)
     try:
         return _process(video, out, n_frames, camera_height, ceiling_height, stride, fov)
     finally:
         if not keep_intermediate:
-            clean_intermediates(out, skip=preexisting)
+            left = clean_intermediates(out)
+            if left:
+                log(f"warning: could not delete {', '.join(left)} in {out}; they contain photos of your room. "
+                    "Delete them yourself.")
 
 
 def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
