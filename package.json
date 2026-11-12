@@ -1,0 +1,14 @@
+{
+  "name": "video-to-3d-web",
+  "private": true,
+  "type": "module",
+  "description": "Browser port of the measuring pipeline. Sources in ts/src, built output committed in viewer/js/core.",
+  "scripts": {
+    "build": "tsc -p ts/tsconfig.json",
+    "typecheck": "tsc -p ts/tsconfig.json --noEmit",
+    "test": "node --test \"tests/js/*.test.mjs\""
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
