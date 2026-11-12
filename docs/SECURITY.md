@@ -18,6 +18,10 @@ home and can carry their location, so privacy is part of the threat model.
 | The machine running `vid3d serve` | A malicious or broken video; a malicious web page open in the same browser | Length, size and frame-count limits before decoding. One job at a time. Idle sockets dropped after 60 s. Old jobs pruned. No shell is ever used; the pipeline is started with a fixed argument list. |
 | The viewer's users | A tampered script or dependency | three.js is bundled (no CDN), checked against a SHA-384 hash in the page, and the Content-Security-Policy allows scripts from the same origin only, no inline script. |
 
+## Hybrid camera-solve server (`vid3d.sfm_server`)
+
+Separate from `vid3d serve`. It receives frames, so it is a boundary of its own: body cap checked from `Content-Length` before reading, at most 120 frames and 1280 px each, all the same size, every frame decoded and **re-encoded** (this drops EXIF and GPS), server-made file names, Origin allow-list for browsers, one job at a time, a per-client minimum interval, a 900 s solver timeout, a temp folder deleted in every case, no request logging, no stack traces to clients. The payload it returns is validated again by whoever receives it. **Not yet in place:** bot protection, a spend cap, TLS (put it behind a proxy that terminates TLS), and a hardened container image build.
+
 ## Trust boundaries
 
 1. **Browser to local server** (`vid3d serve`): untrusted. Checks: Host allow-list (DNS rebinding), Origin check on every POST, `application/octet-stream` only, size cap (2 GB), file-extension allow-list, server-generated ids and file names (never taken from the client), only three named result files are served from a job folder.

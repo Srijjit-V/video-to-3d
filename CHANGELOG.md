@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Hybrid mode: `python -m vid3d.sfm_server` solves camera paths from resized frames; `vid3d process --sfm-server URL` uses it. Validated sfm payload (`sfm_payload.py`), `process(sfm_payload=...)`, Phase 0 browser measurements in `docs/VERIFICATION.md`.
 - `docs/demo.gif` (made by `scripts/make_readme_gif.py`): a short screen recording of the demo for the README.
 - Floor-plan export: "Download SVG" and "Download JSON" in the viewer, built in the browser from `scene.json`, scaled by calibration, ranges and confidence included, no file name.
 - Web viewer rebuilt as a standalone static site (`viewer/`, three.js bundled, no build step): landing with explanation and repo link, drag-and-drop, bundled sample room, phone layout, keyboard shortcuts.

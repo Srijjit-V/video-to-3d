@@ -17,6 +17,7 @@ from .depth import DepthModel, align_disparity, metric_depth
 from .frames import extract_frames
 from .geometry import View, backproject, find_floor, floor_frame, fuse, yaw_align
 from .privacy import check_private_dirs, clean_intermediates
+from .sfm_client import solve_remote
 from .sfm_payload import load_payload, payload_to_npz
 
 DEFAULT_CAMERA_HEIGHT_M = 1.45  # typical height of a phone held while walking
@@ -67,13 +68,13 @@ def video_label(video: Path) -> str:
 
 def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | None = None,
             ceiling_height: float | None = None, stride: int = 4, fov: float = 70.0,
-            keep_intermediate: bool = False, sfm_payload: Path | None = None) -> dict:
+            keep_intermediate: bool = False, sfm_payload: Path | None = None, sfm_server: str | None = None) -> dict:
     """Run the six stages. The frames and COLMAP work folder are deleted at the end (success or
     failure) unless keep_intermediate is set: they are photos of the user's room."""
     out.mkdir(parents=True, exist_ok=True)
     check_private_dirs(out, keep_intermediate)
     try:
-        return _process(video, out, n_frames, camera_height, ceiling_height, stride, fov, sfm_payload)
+        return _process(video, out, n_frames, camera_height, ceiling_height, stride, fov, sfm_payload, sfm_server)
     finally:
         if not keep_intermediate:
             left = clean_intermediates(out)
@@ -83,7 +84,8 @@ def process(video: Path, out: Path, n_frames: int = 80, camera_height: float | N
 
 
 def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
-             ceiling_height: float | None, stride: int, fov: float, sfm_payload: Path | None = None) -> dict:
+             ceiling_height: float | None, stride: int, fov: float, sfm_payload: Path | None = None,
+             sfm_server: str | None = None) -> dict:
     t0 = time.time()
     out.mkdir(parents=True, exist_ok=True)
     frames_dir, work = out / "frames", out / "work"
@@ -92,12 +94,18 @@ def _process(video: Path, out: Path, n_frames: int, camera_height: float | None,
     kept = extract_frames(video, frames_dir, target=n_frames)
     log(f"      {len(kept)} frames kept")
 
-    if sfm_payload is not None:
-        log("[2/6] camera path supplied as an sfm payload (solved elsewhere)")
+    if sfm_payload is not None or sfm_server is not None:
         try:
-            sfm_stats = payload_to_npz(load_payload(sfm_payload), work)
+            if sfm_server is not None:
+                log(f"[2/6] camera path solved on a server ({len(kept)} frames sent, not the video)")
+                payload = solve_remote(frames_dir, sfm_server, fov)
+            else:
+                assert sfm_payload is not None  # noqa: S101 - narrows the type for mypy
+                log("[2/6] camera path supplied as an sfm payload (solved elsewhere)")
+                payload = load_payload(sfm_payload)
+            sfm_stats = payload_to_npz(payload, work)
         except (ValueError, OSError) as e:
-            raise RuntimeError(f"The camera-path payload was refused: {e}") from e
+            raise RuntimeError(f"The camera-path step was refused: {e}") from e
         (work / "sfm_stats.json").write_text(json.dumps(sfm_stats))
     else:
         log("[2/6] solving camera path with COLMAP (separate process)")

@@ -111,7 +111,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 | Untrusted input | duration, resolution and frame-count limits before and during decode; 2 GB upload cap, extension allow-list, server-made file names |
 | Local server | `127.0.0.1` only, Host allow-list (DNS rebinding), Origin check, one job at a time, socket timeout, job pruning, traversal tests, CSP |
 | Supply chain | model pinned to a commit and loaded as safetensors; three.js bundled with a SHA-384 integrity hash checked against the npm package; hash-pinned lockfile; `pip-audit` in CI |
-| Quality gates | ruff (with security rules), mypy, 131 Python tests, 16 viewer-logic tests, 13 real-browser tests, GitHub Actions on every push |
+| Quality gates | ruff (with security rules), mypy, 159 Python tests, 16 viewer-logic tests, 13 real-browser tests, GitHub Actions on every push |
 | Accessible UI | keyboard-complete, screen-reader labels, tested contrast (23 checks), phone layout verified, strict CSP with no inline script |
 
 ## Explore the code
@@ -137,13 +137,25 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 
 Measured on 2026-11-10 (details in [docs/VERIFICATION.md](docs/VERIFICATION.md)):
 
-- **131** Python tests pass (16 opt-in skipped); **16** Node tests; **13** browser tests; ruff, mypy and `pip-audit` clean.
+- **159** Python tests pass (17 opt-in skipped); **16** Node tests; **13** browser tests; ruff, mypy and `pip-audit` clean.
 - Synthetic 5.0 x 4.0 m room: with the true camera height, 4.05 x 5.00 m (+1.3%, 0%) and the area range 18.1 to 22.2 m² contained the true 20 m²;
   with the default 1.45 m assumed, 3.90 x 4.85 m (-2.5%, -3.0%) and the range 13.9 to 24.4 m² contained it too.
 - One run per setting; the camera solver varies by a few percent between runs.
 
 **Not claimed:** accuracy on real phone video (not measured); that the 90% ranges are calibrated on real rooms; results for mirrors, glass, moving people or very dark rooms;
 non-rectangular rooms beyond flagging them; anything on Windows, Linux or CUDA; Vercel deployment (only GitHub Pages is live; the Vercel connector was refused, see Deploy).
+
+## Hybrid mode (camera path on a server)
+
+Solving the camera path (COLMAP) is the heavy step. In Hybrid mode only the ~80 resized JPEG frames (never the video) go to a small server that runs pycolmap and returns a payload of under 1 MB; depth, fusion and measuring stay on your computer.
+The server needs pycolmap, numpy and headless OpenCV only (no torch). It re-encodes every frame (dropping EXIF and GPS), keeps nothing after the job and logs no image content.
+
+```bash
+.venv/bin/python -m vid3d.sfm_server --port 8787            # the server (on any machine)
+.venv/bin/vid3d process my_room.mp4 --sfm-server http://127.0.0.1:8787
+```
+
+Tested end to end on this computer (real COLMAP, synthetic room: 4.05 x 5.0 m, same as the local path). **Not yet built or tested:** the Docker image in `deploy/`, any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, and the browser upload screen with its consent step. Do not expose the server publicly before those exist.
 
 ## Deploy the viewer
 

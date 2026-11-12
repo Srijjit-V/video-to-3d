@@ -52,6 +52,10 @@ def main(argv=None) -> None:
     p.add_argument("--keep-intermediate", action="store_true",
                    help="keep frames/ and work/ (photos of your room) for debugging; they are deleted by default")
 
+    p.add_argument("--sfm-server", metavar="URL",
+                   help="solve the camera path on this server (python -m vid3d.sfm_server) instead of on this machine; "
+                        "only ~80 resized frames are sent, never the video")
+
     v = sub.add_parser("view", help="open the 3D viewer for a processed run")
     v.add_argument("run", type=Path)
     v.add_argument("--port", type=int, default=8765)
@@ -70,8 +74,8 @@ def main(argv=None) -> None:
         try:
             process(args.video, out, n_frames=args.frames, camera_height=args.camera_height,
                     ceiling_height=args.ceiling_height, stride=args.stride, fov=args.fov,
-                    keep_intermediate=args.keep_intermediate)
-        except RuntimeError as e:
+                    keep_intermediate=args.keep_intermediate, sfm_server=args.sfm_server)
+        except (RuntimeError, ValueError) as e:
             raise SystemExit(f"error: {e}") from None
         print(f"\nView it:  vid3d view {out}")
     elif args.cmd == "serve":

@@ -88,3 +88,29 @@ def payload_to_npz(p: dict, work_dir: Path) -> dict:
 
 def load_payload(path: Path) -> dict:
     return json.loads(Path(path).read_text())
+
+
+def npz_to_payload(npz_path: Path, stats: dict) -> dict:
+    """Inverse of payload_to_npz: pack work/sfm.npz (what sfm.py writes) into the small JSON that travels."""
+    d = np.load(npz_path)
+    off = d["obs_offsets"]
+    K, size = d["K"], d["size"]
+    frames = []
+    for i, name in enumerate(d["names"]):
+        frames.append({
+            "name": str(name),
+            "R": [round(float(v), 9) for v in d["R"][i].reshape(-1)],
+            "t": [round(float(v), 9) for v in d["t"][i]],
+            "obs": [[round(float(u), 2), round(float(v), 2), round(float(z), 4)]
+                    for u, v, z in d["obs"][off[i]:off[i + 1]]],
+        })
+    payload = {
+        "version": VERSION,
+        "camera": {"width": int(size[0][0]), "height": int(size[0][1]), "focal": float(K[0][0][0]),
+                   "cx": float(K[0][0][2]), "cy": float(K[0][1][2]), "k1": float(d["k1"][0])},
+        "frames_total": int(stats["frames_total"]),
+        "reprojection_error_px": float(stats.get("reprojection_error_px", 0.0)),
+        "frames": frames,
+    }
+    validate(payload)
+    return payload

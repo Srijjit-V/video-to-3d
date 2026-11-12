@@ -117,6 +117,21 @@ flowchart LR
 
 Details and the threat model are in [SECURITY.md](SECURITY.md).
 
+## Hybrid mode: the seam
+
+```mermaid
+sequenceDiagram
+    participant C as Your computer (CLI today, browser later)
+    participant S as sfm server (pycolmap only)
+    C->>C: pick ~80 sharp frames, resize to 1024 px
+    C->>S: POST /v1/sfm (zip of JPEGs, never the video)
+    S->>S: validate, strip EXIF by re-encoding, solve camera path, delete frames
+    S-->>C: sfm payload (cameras K, k1, per-frame R, t and sparse u, v, z), under 1 MB
+    C->>C: depth, fit, fusion, floor and scale, ranges, floor plan
+```
+
+The payload format is documented in `src/vid3d/sfm_payload.py` and validated on both sides. Local mode (`vid3d process`) writes the same data to `work/sfm.npz`; any solver that produces the payload (the server, colmap-wasm) plugs in at the same point.
+
 ## Modules
 
 | Module | Job |
@@ -128,6 +143,7 @@ Details and the threat model are in [SECURITY.md](SECURITY.md).
 | `floorplan.py` | wall alignment, room extent, wall support, floor-plan image, palette |
 | `uncertainty.py` | Monte Carlo ranges, confidence, camera-height consistency |
 | `color.py` | exposure normalisation, dominant colours |
+| `sfm_payload.py`, `sfm_server.py`, `sfm_client.py` | the camera-solve seam, the Hybrid server and its client |
 | `privacy.py` | deleting the frames and work files |
 | `pipeline.py` | runs the stages, writes the outputs, quality warnings |
 | `server.py`, `cli.py` | local servers and the command line |

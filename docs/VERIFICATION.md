@@ -7,7 +7,7 @@ Everything here was actually run; anything not run is under "Not verified".
 
 | Check | Command | Result |
 |---|---|---|
-| Python tests | `python -m pytest -q` | **131 passed, 16 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
+| Python tests | `python -m pytest -q` | **159 passed, 17 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
 | Viewer logic | `node --test "tests/js/*.test.mjs"` | **16 passed** |
 | Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **13 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
 | Lint | `ruff check .` (pyflakes, pycodestyle, bugbear, pyupgrade, bandit rules, import order) | clean |
@@ -70,6 +70,13 @@ The poses were fed to the Python stages through the new sfm payload (`src/vid3d/
 
 Not tested: Safari, any phone browser, WebGPU-less machines, other GPUs, more than one room, depth quality of the q4f16 model compared with the PyTorch model (only speed and size were measured).
 The Modal limits and prices below are from search results, not from reading Modal's own docs; the request-body limit was not found. Check before relying on them.
+
+## Hybrid server (2026-11-11)
+
+- `tests/test_sfm_server.py` (17 tests, 18 with `VID3D_E2E=1`) and `tests/test_sfm_payload.py` (11): zip validation (count, size, resolution, same size, not a JPEG, names inside the zip never used), body cap checked before reading, Origin allow-list and CORS preflight, one job at a time (503 with Retry-After), per-client minimum interval (429), solver message passed through, temp folder always deleted, EXIF/GPS bytes gone before solving, payload round trip, client refusing non-http URLs.
+- Real run: the synthetic room's frames through the server with real pycolmap (36 s test); then `vid3d process --sfm-server` end to end: 60 of 60 frames placed, 4.05 x 5.0 m, area range 18.0 to 22.3 m², confidence high. The server modules do not import torch (checked).
+- **Not verified:** the Docker image (`deploy/Dockerfile.sfm`; the Docker daemon was not running here, so it was never built), any public deployment, request-size behaviour behind a real proxy or Modal, rate limits behind a proxy (the limit is per socket address; `X-Forwarded-For` is deliberately not trusted), Turnstile, spend caps.
+- One full-suite run showed a single failing test that I could not identify; five full runs and six repeats of the server tests after it all passed. Treat as an unexplained flake.
 
 ## Not verified
 
