@@ -5,13 +5,14 @@ import { parsePly } from "./ply.js";
 import { RAMP, availableModes } from "./colors.js";
 import { detectMode, uploadVideo, getJob, cancelJob } from "./jobs.js";
 import { demoSteps, markDone } from "./demo.js";
+import { parseServerUrl, extractFrames, solveOnServer, cameraCentres } from "./hybrid.js";
 import { floorPlanJson, floorPlanSvg } from "./export.js";
 import { confidenceView, esc, fmtLen, fmtRange, mmss, textOn } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 const VIDEO = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
 const MAX_VIDEO = 2 * 1024 ** 3;
-const SCREENS = ["start", "progress", "scene"];
+const SCREENS = ["start", "consent", "progress", "scene"];
 
 let mode = "hosted", view = null, meta = null, planUrl = null, calKey = "vid3d-cal", lastLegend = null, job = null, ticker = 0;
 
@@ -36,12 +37,14 @@ function setupMode() {
     $("drop-sub").textContent = "or choose a file · 10 to 30 seconds of slow walking works best";
     $("mode-note").textContent = "Everything stays on this computer. Processing takes about three minutes.";
   } else {
-    file.accept = ".ply,.json,.png";
-    $("advanced").hidden = true;
-    $("drop-title").textContent = "Drop your cloud.ply and scene.json";
-    $("drop-sub").textContent = "or choose files · add floorplan.png if you have it · they open here in your browser and are never uploaded";
-    $("mode-note").textContent = "This page can't process videos: that needs COLMAP and AI models running on your own computer. "
-      + "To try your own video, run vid3d serve on your computer (see the project page), or open the sample room.";
+    file.accept = "video/*,.mp4,.mov,.m4v,.webm,.ply,.json,.png";
+    for (const id of ["opt-camera", "opt-ceiling"]) $(id).closest("label").hidden = true; // used by stages that are not in the browser yet
+    $("server-field").hidden = false;
+    try { $("opt-server").value = localStorage.getItem("vid3d-server") || ""; } catch { /* storage blocked */ }
+    $("drop-title").textContent = "Drop a video here";
+    $("drop-sub").textContent = "or choose a file · or drop a cloud.ply and scene.json to view a scan";
+    $("mode-note").textContent = "Frames are picked on your device. Nothing leaves it until you say so, and then only small pictures, never the video. "
+      + "Measuring from the pictures is not in the browser yet (the camera path is the first part); the sample room shows the full result.";
   }
 }
 
@@ -50,9 +53,8 @@ async function handleFiles(files) {
   const list = [...files];
   const video = list.find((f) => VIDEO.test(f.name) || f.type.startsWith("video/"));
   if (video) {
-    if (mode !== "local") return fail("This page can't process videos. Run vid3d serve on your computer to try your own, or open the sample room.");
     if (video.size > MAX_VIDEO) return fail("That video is bigger than 2 GB. Trim it or lower its resolution.");
-    return startJob(video);
+    return mode === "local" ? startJob(video) : startHybrid(video);
   }
   const ply = list.find((f) => /\.ply$/i.test(f.name));
   if (!ply) return fail(mode === "local" ? "Drop a video, or a cloud.ply file with its scene.json." : "Drop a cloud.ply file (with its scene.json) from a vid3d run.");
@@ -86,11 +88,12 @@ function wireStart() {
 
 const STAGES = ["Pick sharp frames", "Solve the camera path", "AI depth on each frame", "Fuse into one cloud", "Find the floor and scale", "Floor plan and export"];
 
-function buildStages() {
+function buildStages(where = []) {
   $("stage-list").replaceChildren(...STAGES.map((label, i) => {
     const li = document.createElement("li");
     li.dataset.status = "pending";
-    li.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="stage-label">${i + 1}. ${esc(label)}<span class="sr-only"></span></span><span class="stage-detail"></span>`;
+    const tag = where[i] ? ` <span class="where">${esc(where[i])}</span>` : "";
+    li.innerHTML = `<span class="dot" aria-hidden="true"></span><span class="stage-label">${i + 1}. ${esc(label)}${tag}<span class="sr-only"></span></span><span class="stage-detail"></span>`;
     return li;
   }));
 }
@@ -145,6 +148,133 @@ async function startJob(file) {
   } catch (e) { stopWithError("That didn't work", e.message, [], "Couldn't start"); }
 }
 
+// ---------- hybrid mode (hosted page): frames on this device, camera path on a server ----------
+
+const HYBRID_WHERE = ["on your device", "on the server", "on your device · not in the browser yet", "on your device · not in the browser yet",
+  "on your device · not in the browser yet", "on your device · not in the browser yet"];
+let hy = null; // { abort, frames, thumbs }
+
+function setStage(i, status, detail = "") {
+  const li = $("stage-list").children[i];
+  li.dataset.status = status;
+  li.querySelector(".dot").textContent = status === "done" ? "✓" : status === "error" ? "!" : "";
+  li.querySelector(".sr-only").textContent = STATUS_TEXT[status];
+  li.querySelector(".stage-detail").textContent = detail;
+}
+
+function hybridSummary(text, fraction) {
+  $("prog-summary").textContent = text;
+  $("prog-live").textContent = text;
+  if (fraction != null) $("bar-fill").style.width = `${Math.round(fraction * 100)}%`;
+}
+
+function dropHybrid() {
+  hy?.thumbs?.forEach((u) => URL.revokeObjectURL(u));
+  hy = null;
+}
+
+async function startHybrid(file) {
+  let server;
+  try {
+    server = parseServerUrl($("opt-server").value);
+    try { localStorage.setItem("vid3d-server", $("opt-server").value.trim()); } catch { /* storage blocked */ }
+  } catch (e) { return fail(e.message); }
+  dropHybrid();
+  const abort = new AbortController();
+  hy = { abort, frames: [], thumbs: [] };
+  show("progress");
+  buildStages(HYBRID_WHERE);
+  STAGES.forEach((_, i) => i >= 2 && setStage(i, "pending", "Not available in the browser yet"));
+  $("prog-error").hidden = true;
+  $("hybrid-result").hidden = true;
+  $("again-btn").hidden = true;
+  $("cancel-btn").hidden = false;
+  $("cancel-btn").disabled = false;
+  $("bar-fill").style.width = "0%";
+  tick(Date.now());
+  setStage(0, "running", "reading the video");
+  hybridSummary("Stage 1: picking sharp frames on your device", 0.02);
+  try {
+    const { frames } = await extractFrames(file, {
+      signal: abort.signal,
+      onProgress: (n, total) => { setStage(0, "running", `frame ${n} of ${total}`); hybridSummary("Stage 1: picking sharp frames on your device", 0.25 * (n / total)); },
+    });
+    setStage(0, "done", `${frames.length} frames, on your device`);
+    hy.frames = frames;
+    clearInterval(ticker);
+    showConsent(server);
+    $("consent-send").onclick = () => sendFrames(server);
+  } catch (e) { hybridFailed(e); }
+}
+
+function showConsent(server) {
+  const bytes = hy.frames.reduce((s, f) => s + f.blob.size, 0);
+  hy.thumbs = hy.frames.filter((_, i) => i % Math.ceil(hy.frames.length / 6) === 0).slice(0, 6).map((f) => URL.createObjectURL(f.blob));
+  $("consent-count").textContent = $("consent-count2").textContent = String(hy.frames.length);
+  $("consent-size").textContent = `${(bytes / 1e6).toFixed(1)} MB`;
+  $("consent-host").textContent = new URL(server).host;
+  $("consent-thumbs").replaceChildren(...hy.thumbs.map((u) => {
+    const li = document.createElement("li"), img = document.createElement("img");
+    img.src = u; img.alt = ""; img.width = 96; img.height = 64;
+    li.append(img);
+    return li;
+  }));
+  show("consent");
+  $("consent-send").focus();
+}
+
+async function sendFrames(server) {
+  if (!hy) return;
+  const { abort, frames } = hy;
+  show("progress");
+  $("cancel-btn").hidden = false;
+  $("cancel-btn").disabled = false;
+  tick(Date.now());
+  setStage(1, "running", "uploading");
+  hybridSummary("Stage 2: sending pictures to the server", 0.3);
+  try {
+    const payload = await solveOnServer(frames, server, $("opt-fov").value, {
+      signal: abort.signal,
+      onUpload: (f) => { setStage(1, "running", `uploading ${Math.round(f * 100)}%`); hybridSummary("Stage 2: sending pictures to the server", 0.3 + 0.1 * f); },
+      onUploaded: () => { setStage(1, "running", "solving on the server, about a minute"); hybridSummary("Stage 2: the server is solving the camera path", 0.45); },
+    });
+    dropHybrid();
+    clearInterval(ticker);
+    const placed = payload.frames.length, total = Number.isFinite(payload.frames_total) ? payload.frames_total : frames.length;
+    setStage(1, "done", `${placed} of ${total} frames placed`);
+    hybridSummary(`Camera path found: ${placed} of ${total} frames placed`, 0.5);
+    showPath(payload, placed, total);
+    $("cancel-btn").hidden = true;
+    $("again-btn").hidden = false;
+    $("again-btn").focus();
+  } catch (e) { hybridFailed(e); }
+}
+
+function showPath(payload, placed, total) {
+  const c = cameraCentres(payload), svg = $("path-plot");
+  svg.replaceChildren();
+  if (c.length > 1) {
+    const xs = c.map((p) => p[0]), zs = c.map((p) => p[2]);
+    const lo = [Math.min(...xs), Math.min(...zs)], span = Math.max(Math.max(...xs) - lo[0], Math.max(...zs) - lo[1], 1e-9);
+    const pts = c.map((p) => `${(10 + 180 * (p[0] - lo[0]) / span).toFixed(1)},${(10 + 180 * (p[2] - lo[1]) / span).toFixed(1)}`).join(" ");
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("points", pts); line.setAttribute("fill", "none"); line.setAttribute("stroke", "currentColor"); line.setAttribute("stroke-width", "2");
+    svg.append(line);
+  }
+  $("hybrid-result-msg").textContent = `The server placed ${placed} of ${total} pictures along your walk (plotted from above, arbitrary units). `
+    + "Turning that into a measured room (depth, floor, scale, size) is not in the browser yet. To get the full result today, run vid3d on your computer, or open the sample room.";
+  $("hybrid-result").hidden = false;
+}
+
+function hybridFailed(e) {
+  clearInterval(ticker);
+  dropHybrid();
+  if (e?.name === "AbortError") return show("start");
+  const at = [...$("stage-list").children].findIndex((li) => li.dataset.status === "running");
+  if (at >= 0) setStage(at, "error", "");
+  stopWithError("That didn't work", e.message, [], at === 1 ? "Stopped at stage 2: the camera path" : "Stopped at stage 1: picking frames");
+}
+
 async function poll(id) {
   for (;;) {
     const s = await getJob(id);
@@ -177,9 +307,11 @@ function wireProgress() {
   $("cancel-btn").addEventListener("click", async () => {
     $("cancel-btn").disabled = true;
     $("prog-summary").textContent = "Cancelling…";
-    if (job) await cancelJob(job).catch(() => {});
+    if (hy) hy.abort.abort();
+    else if (job) await cancelJob(job).catch(() => {});
   });
   $("again-btn").addEventListener("click", () => { job = null; show("start"); });
+  $("consent-cancel").addEventListener("click", () => { dropHybrid(); show("start"); });
 }
 
 // ---------- the scene ----------

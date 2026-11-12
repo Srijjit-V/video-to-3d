@@ -50,6 +50,9 @@
       <details id="advanced" class="advanced">
         <summary>Advanced options</summary>
         <div class="fields">
+          <label for="opt-server" id="server-field" hidden>Camera-solve server
+            <input id="opt-server" type="url" inputmode="url" placeholder="http://127.0.0.1:8787" autocomplete="off" spellcheck="false">
+            <span class="hint">Where the pictures are sent to find the camera path. Run <code>python -m vid3d.sfm_server</code>, or use your own.</span></label>
           <label for="opt-camera">Camera height (m)
             <input id="opt-camera" type="number" inputmode="decimal" min="0.3" max="3" step="0.05" placeholder="1.45…" autocomplete="off">
             <span class="hint">How high you held the phone. Sets the real-world scale.</span></label>
@@ -69,7 +72,27 @@
     </div>
   </section>
 
-  <!-- 2. Progress (local mode only) -->
+  <!-- 2a. Consent (hybrid mode): shows exactly what would leave this device -->
+  <section id="consent" class="screen" aria-labelledby="consent-title" hidden>
+    <div class="card progress-card">
+      <h2 id="consent-title" class="h-display">Ready to send <span id="consent-count"></span> pictures?</h2>
+      <p class="muted">Your video stays on this device. These pictures were taken out of it here, in your browser.</p>
+      <ul id="consent-thumbs" class="thumbs" aria-label="A few of the pictures that would be sent"></ul>
+      <ul class="consent-list">
+        <li><strong>What is sent:</strong> <span id="consent-count2"></span> JPEG pictures, <span id="consent-size"></span> in total, each at most 1024 px wide.</li>
+        <li><strong>What is not sent:</strong> the video, sound, and the video's location and camera details. The pictures were redrawn, which removes that information.</li>
+        <li><strong>Where it goes:</strong> <code id="consent-host"></code>. That server works out where the camera was.</li>
+        <li><strong>What the server keeps:</strong> nothing. It deletes the pictures when it finishes and does not log them.</li>
+      </ul>
+      <p class="muted small">The pictures show the inside of your home. Only continue if you trust that server.</p>
+      <div class="actions">
+        <button id="consent-send" class="btn btn-primary" type="button">Send the pictures</button>
+        <button id="consent-cancel" class="btn btn-ghost" type="button">Don't send anything</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Progress -->
   <section id="progress" class="screen" aria-labelledby="progress-title" hidden>
     <div class="card progress-card">
       <h2 id="progress-title" class="h-display">Building your 3D model</h2>
@@ -85,6 +108,11 @@
       <div class="actions">
         <button id="cancel-btn" class="btn btn-ghost" type="button">Cancel</button>
         <button id="again-btn" class="btn btn-primary" type="button" hidden>Try another video</button>
+      </div>
+      <div id="hybrid-result" class="callout" hidden>
+        <strong id="hybrid-result-title">Camera path found</strong>
+        <p id="hybrid-result-msg"></p>
+        <svg id="path-plot" viewBox="0 0 200 200" role="img" aria-label="Top-down plot of where the camera was during the walk" width="200" height="200"></svg>
       </div>
       <p id="prog-live" class="sr-only" aria-live="polite"></p>
     </div>

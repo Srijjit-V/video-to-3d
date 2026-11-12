@@ -66,6 +66,21 @@ def hosted_url():
     srv.shutdown()
 
 
+@pytest.fixture(scope="session")
+def h264_video(tmp_path_factory):
+    """The synthetic room re-encoded as H.264: browsers can't decode the sample's MPEG-4 Part 2, phones record H.264 or HEVC."""
+    out = tmp_path_factory.mktemp("h264") / "synthetic_room_h264.mp4"
+    src = cv2.VideoCapture(str(VIDEO))
+    ok, frame = src.read()
+    vw = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"avc1"), 30, (frame.shape[1], frame.shape[0]))
+    while ok:
+        vw.write(frame)
+        ok, frame = src.read()
+    vw.release()
+    assert out.stat().st_size > 10_000
+    return out
+
+
 @pytest.fixture
 def local_url(tmp_path):
     """`vid3d serve`: the same server, running the real pipeline."""
@@ -157,9 +172,11 @@ def test_hosted_start_screen_is_honest_about_what_it_can_do(desktop, hosted_url)
     pg = desktop.page
     pg.goto(hosted_url)
     until(pg, "document.documentElement.dataset.mode === 'hosted'")
-    assert "can't process videos" in pg.inner_text("#mode-note")
+    note = pg.inner_text("#mode-note")
+    assert "Nothing leaves it until you say so" in note and "not in the browser yet" in note  # honest about the limit
     assert pg.is_visible("#sample-btn") and pg.is_visible("#drop")
-    assert not pg.is_visible("#advanced")  # no processing, so no processing options
+    pg.click("#advanced summary")
+    assert pg.is_visible("#opt-server") and not pg.is_visible("#opt-camera")  # only options that do something here
     assert "GitHub.com/Srijjit-V/video-to-3d".lower() in pg.get_attribute("a.link", "href").lower()
     shot(pg, "desktop-landing")
     assert desktop.errors == []
@@ -235,14 +252,76 @@ def test_hosted_opens_a_lone_cloud_with_a_clear_limitation(desktop, hosted_url):
     assert pg.is_hidden("#plan-wrap")
 
 
-def test_hosted_refuses_a_video_in_plain_words(desktop, hosted_url, tmp_path):
+def test_hosted_explains_a_video_this_browser_cannot_read(desktop, hosted_url, tmp_path):
     fake = tmp_path / "room.mp4"
     fake.write_bytes(b"not really a video")
     desktop.page.goto(hosted_url)
-    desktop.page.evaluate("document.getElementById('file').accept = ''")  # as if dropped, not chosen
     desktop.page.set_input_files("#file", str(fake))
-    desktop.page.wait_for_selector("#start-error", state="visible")
-    assert "can't process videos" in desktop.page.inner_text("#start-error")
+    desktop.page.wait_for_selector("#prog-error", state="visible")
+    assert "couldn't read that video" in desktop.page.inner_text("#prog-error-msg")
+
+
+def test_hosted_hybrid_picks_frames_asks_consent_then_gets_the_camera_path(desktop, hosted_url, h264_video, tmp_path):
+    """The real synthetic video, the real browser, a real camera-solve server running real COLMAP."""
+    from urllib.parse import urlparse
+
+    from vid3d.sfm_server import Limits, default_runner, make_server
+
+    origin = "http://" + urlparse(hosted_url).netloc
+    srv = make_server("127.0.0.1", 0, runner=default_runner, allowed_origins={origin}, limits=Limits(min_interval_s=0.0), tmp_root=tmp_path)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    seen = []
+    pg = desktop.page
+    pg.on("request", lambda r: seen.append((r.method, r.url, r.post_data_buffer and len(r.post_data_buffer))))
+    pg.goto(hosted_url)
+    pg.click("#advanced summary")
+    pg.fill("#opt-server", f"http://127.0.0.1:{srv.server_address[1]}")
+    pg.set_input_files("#file", str(h264_video))
+    # stage 1 runs on the device; nothing has been sent yet when the consent screen appears
+    pg.wait_for_selector("#consent", state="visible", timeout=240000)
+    assert not [r for r in seen if r[0] == "POST"], "something was sent before consent"
+    assert int(pg.inner_text("#consent-count")) >= 30
+    assert pg.locator("#consent-thumbs img").count() >= 3
+    assert "127.0.0.1" in pg.inner_text("#consent-host")
+    assert "Your video stays on this device" in pg.inner_text("#consent")
+    shot(pg, "desktop-consent")
+    pg.click("#consent-send")
+    pg.wait_for_selector("#hybrid-result", state="visible", timeout=300000)
+    assert "frames placed" in pg.inner_text("#prog-summary")
+    msg = pg.inner_text("#hybrid-result-msg")
+    assert "not in the browser yet" in msg
+    assert pg.locator("#path-plot polyline").count() == 1
+    posts = [r for r in seen if r[0] == "POST"]
+    assert len(posts) == 1 and "/v1/sfm" in posts[0][1]
+    assert posts[0][2] < 40_000_000 and posts[0][2] < h264_video.stat().st_size * 20  # pictures, not the video
+    assert [li.get_attribute("data-status") for li in pg.locator("#stage-list li").all()][:2] == ["done", "done"]
+    shot(pg, "desktop-hybrid-result")
+    srv.shutdown()
+    assert desktop.errors == [], desktop.errors
+
+
+def test_hosted_hybrid_says_so_when_the_server_is_not_there(desktop, hosted_url, h264_video):
+    pg = desktop.page
+    pg.goto(hosted_url)
+    pg.click("#advanced summary")
+    pg.fill("#opt-server", "http://127.0.0.1:9")
+    pg.set_input_files("#file", str(h264_video))
+    pg.wait_for_selector("#consent", state="visible", timeout=240000)
+    pg.click("#consent-send")
+    pg.wait_for_selector("#prog-error", state="visible", timeout=60000)
+    assert "Could not reach the server at 127.0.0.1:9" in pg.inner_text("#prog-error-msg")
+
+
+def test_hosted_hybrid_consent_can_be_refused_and_nothing_is_sent(desktop, hosted_url, h264_video):
+    pg = desktop.page
+    sent = []
+    pg.on("request", lambda r: sent.append(r) if r.method == "POST" else None)
+    pg.goto(hosted_url)
+    pg.set_input_files("#file", str(h264_video))
+    pg.wait_for_selector("#consent", state="visible", timeout=240000)
+    pg.click("#consent-cancel")
+    pg.wait_for_selector("#start", state="visible")
+    assert sent == []
 
 
 def test_hosted_rejects_a_bad_file_with_a_message(desktop, hosted_url, tmp_path):

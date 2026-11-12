@@ -22,8 +22,10 @@ A phone video becomes a metric point cloud, a room size **with a 90% range and a
 </div>
 
 > [!IMPORTANT]
-> **The hosted page cannot process a video.** Reconstruction needs COLMAP and an AI model, so it runs on **your own computer**
-> (`vid3d serve`). The hosted viewer is a static site: it opens the bundled demo scans and any `cloud.ply` + `scene.json` you drop on it. Files stay in your browser.
+> **The hosted page cannot yet turn a video into a measured room.** That needs COLMAP and an AI model, so the full result runs on **your own computer**
+> (`vid3d serve`). The hosted page can open the bundled demo scans and any `cloud.ply` + `scene.json` you drop on it (files stay in your browser), and it
+> can take a video through the first half: it picks sharp frames **on your device**, asks your consent, sends only those small pictures to a camera-solve server and shows the camera path it gets back.
+> Depth and measuring in the browser are not built yet.
 >
 > **Accuracy is only measured on a synthetic room.** Real-phone accuracy has not been measured yet ([protocol](docs/BENCHMARK.md)).
 > The error ranges come from a documented model ([docs/MATH.md](docs/MATH.md)), not from real-room statistics.
@@ -107,11 +109,11 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 | Honest numbers | Monte Carlo over scale error, floor fit and wall detection gives a 90% range per dimension; a 0 to 100 confidence with reasons in words; "at least" ranges when a wall is missing; L-shaped rooms flagged |
 | Robust depth | per-frame affine fit `1/z = a d + b`, Theil-Sen start then IRLS with MAD, flying-pixel filter, multi-view voxel agreement |
 | Floor and ceiling | lowest dense height layer, RANSAC + SVD re-levelling, interior-fraction ceiling test; 8 adversarial test rooms |
-| Privacy | video, frames and COLMAP files deleted when a run ends (success, error, cancel); scene.json stores only the file name; nothing uploaded in hosted mode |
+| Privacy | video, frames and COLMAP files deleted when a run ends (success, error, cancel); scene.json stores only the file name; hosted page: frames are picked on the device, nothing is sent without a consent screen that shows the pictures, the server and the size; the video is never sent |
 | Untrusted input | duration, resolution and frame-count limits before and during decode; 2 GB upload cap, extension allow-list, server-made file names |
 | Local server | `127.0.0.1` only, Host allow-list (DNS rebinding), Origin check, one job at a time, socket timeout, job pruning, traversal tests, CSP |
 | Supply chain | model pinned to a commit and loaded as safetensors; three.js bundled with a SHA-384 integrity hash checked against the npm package; hash-pinned lockfile; `pip-audit` in CI |
-| Quality gates | ruff (with security rules), mypy, 159 Python tests, 16 viewer-logic tests, 13 real-browser tests, GitHub Actions on every push |
+| Quality gates | ruff (with security rules), mypy, 159 Python tests, 24 viewer-logic tests, 16 real-browser tests, GitHub Actions on every push |
 | Accessible UI | keyboard-complete, screen-reader labels, tested contrast (23 checks), phone layout verified, strict CSP with no inline script |
 
 ## Explore the code
@@ -137,7 +139,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 
 Measured on 2026-11-10 (details in [docs/VERIFICATION.md](docs/VERIFICATION.md)):
 
-- **159** Python tests pass (17 opt-in skipped); **16** Node tests; **13** browser tests; ruff, mypy and `pip-audit` clean.
+- **159** Python tests pass (20 opt-in skipped); **24** Node tests; **16** browser tests; ruff, mypy and `pip-audit` clean.
 - Synthetic 5.0 x 4.0 m room: with the true camera height, 4.05 x 5.00 m (+1.3%, 0%) and the area range 18.1 to 22.2 m² contained the true 20 m²;
   with the default 1.45 m assumed, 3.90 x 4.85 m (-2.5%, -3.0%) and the range 13.9 to 24.4 m² contained it too.
 - One run per setting; the camera solver varies by a few percent between runs.
@@ -155,7 +157,7 @@ The server needs pycolmap, numpy and headless OpenCV only (no torch). It re-enco
 .venv/bin/vid3d process my_room.mp4 --sfm-server http://127.0.0.1:8787
 ```
 
-Tested end to end on this computer (real COLMAP, synthetic room: 4.05 x 5.0 m, same as the local path). **Not yet built or tested:** the Docker image in `deploy/`, any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, and the browser upload screen with its consent step. Do not expose the server publicly before those exist.
+Tested end to end on this computer (real COLMAP, synthetic room: 4.05 x 5.0 m, same as the local path). **Browser side (built):** drop a video on the page, open *Advanced options*, enter the server address (default `http://127.0.0.1:8787`; start the server with `--origin` set to the page's address), and the page picks frames, shows a consent screen, sends them and plots the returned camera path. **Not yet built or tested:** the Docker image in `deploy/`, any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, resume after a dropped connection, and depth and measuring in the browser (the result stops at the camera path). Do not expose the server publicly before those exist.
 
 ## Deploy the viewer
 

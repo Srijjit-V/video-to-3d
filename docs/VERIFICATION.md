@@ -7,9 +7,9 @@ Everything here was actually run; anything not run is under "Not verified".
 
 | Check | Command | Result |
 |---|---|---|
-| Python tests | `python -m pytest -q` | **159 passed, 17 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
-| Viewer logic | `node --test "tests/js/*.test.mjs"` | **16 passed** |
-| Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **13 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
+| Python tests | `python -m pytest -q` | **159 passed, 20 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
+| Viewer logic | `node --test "tests/js/*.test.mjs"` | **24 passed** |
+| Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **16 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
 | Lint | `ruff check .` (pyflakes, pycodestyle, bugbear, pyupgrade, bandit rules, import order) | clean |
 | Types | `mypy` on `src/vid3d` | clean, 12 files |
 | Dependency audit | `pip-audit -r requirements/lock-py311.txt --no-deps --disable-pip` | no known vulnerabilities |
@@ -77,6 +77,14 @@ The Modal limits and prices below are from search results, not from reading Moda
 - Real run: the synthetic room's frames through the server with real pycolmap (36 s test); then `vid3d process --sfm-server` end to end: 60 of 60 frames placed, 4.05 x 5.0 m, area range 18.0 to 22.3 m², confidence high. The server modules do not import torch (checked).
 - **Not verified:** the Docker image (`deploy/Dockerfile.sfm`; the Docker daemon was not running here, so it was never built), any public deployment, request-size behaviour behind a real proxy or Modal, rate limits behind a proxy (the limit is per socket address; `X-Forwarded-For` is deliberately not trusted), Turnstile, spend caps.
 - One full-suite run showed a single failing test that I could not identify; five full runs and six repeats of the server tests after it all passed. Treat as an unexplained flake.
+
+## Browser upload screen (2026-11-11)
+
+- Node tests: video limits in plain words, Laplacian sharpness, window picking, size fitting, CRC32 check value, and a zip written by `zip.js` that the system `unzip` reads back byte for byte; server-address parsing and camera centres.
+- Real Chrome (Playwright, with the strict CSP from `vercel.json`): an H.264 version of the synthetic room goes through frame picking (80 frames, 4.5 MB, 5 s headless and 9 s headed on this machine), the consent screen (nothing is sent before it; the test checks no POST was made), the upload to a real camera-solve server running real COLMAP, and the returned camera path plot. Also: unreadable video, server not running, and refusing at the consent screen (nothing is sent).
+- Found while testing: the repo's `samples/synthetic_room.mp4` is MPEG-4 Part 2, which Chrome cannot decode (phones record H.264 or HEVC), so the browser tests re-encode it as H.264 first. Real phone `.mov` (HEVC) in Chrome was not tested, and neither was Safari or any phone browser.
+- Frame picking runs on the main thread (not in a worker as the brief asked); it takes seconds, not minutes, but the page may feel unresponsive meanwhile. It uses a `<video>` element, not Mediabunny/WebCodecs.
+- The CSP now allows `media-src blob:` (to decode the chosen video locally) and `connect-src` to `http://127.0.0.1:*` and `http://localhost:*` only (a server you run yourself); a hosted server needs its address added to `vercel.json` before it can be used from the deployed page.
 
 ## Not verified
 

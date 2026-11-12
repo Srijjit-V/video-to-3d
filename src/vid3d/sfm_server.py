@@ -143,7 +143,8 @@ def make_server(host: str, port: int, runner: Runner = default_runner, allowed_o
             if not self._origin_ok() or self.headers.get("Origin") is None:
                 return self._send(403, {"error": "Requests from this site are not allowed."})
             self._send(204, None, {"Access-Control-Allow-Methods": "POST, GET",
-                                   "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600"})
+                                   "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "600",
+                                   "Access-Control-Allow-Private-Network": "true"})
 
         def do_GET(self):
             if urlparse(self.path).path == "/v1/health":

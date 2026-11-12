@@ -266,3 +266,10 @@ input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--mint); m
 .demo-steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--border); font: 600 11px/17px var(--font-ui); text-align: center; color: var(--text-2); }
 .demo-steps li.done::before { content: "\2713"; border-color: var(--green, #4ade80); color: var(--green, #4ade80); }
 .demo-steps small { color: var(--text-2); text-wrap: pretty; }
+
+/* Hybrid mode: where a stage runs, consent screen, path plot */
+.where { margin-left: 6px; padding: 1px 8px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 12px 0; }
+.thumbs img { display: block; width: 96px; height: 64px; object-fit: cover; border-radius: 8px; }
+.consent-list { padding-left: 18px; margin: 12px 0; display: grid; gap: 8px; }
+#path-plot { display: block; margin-top: 8px; color: var(--mint); border: 1px solid var(--border-strong); border-radius: 8px; max-width: 100%; height: auto; }

@@ -36,7 +36,7 @@ LIMITS = {"fov": (20, 150), "camera_height": (0.3, 3.0), "ceiling_height": (1.5,
 
 # Same-origin only: no inline scripts or styles, nothing from other sites except the Google Fonts files.
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-       "font-src https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src 'self'; "
+       "font-src https://fonts.gstatic.com; img-src 'self' blob: data:; connect-src 'self'; media-src blob:; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 

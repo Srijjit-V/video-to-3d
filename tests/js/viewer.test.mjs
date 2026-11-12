@@ -169,3 +169,79 @@ test("no room box, or non-finite numbers, means no export", () => {
   assert.equal(floorPlanSvg({ room: { rect_m: [0, 0, NaN, 1] } }), null);
   assert.equal(floorPlanJson(planScene, 0), null);
 });
+
+// ---------- browser frame picking and zip ----------
+import { checkVideo, laplacianVariance, candidateTimes, pickSharpest, fitSide } from "../../viewer/js/frames.js";
+import { makeZip, crc32 } from "../../viewer/js/zip.js";
+
+test("checkVideo refuses too short, too long, too big and huge videos in plain words", () => {
+  const ok = { duration: 20, width: 1920, height: 1080, size: 50e6 };
+  assert.equal(checkVideo(ok), null);
+  assert.match(checkVideo({ ...ok, duration: 1 }), /only 1\.0 seconds/);
+  assert.match(checkVideo({ ...ok, duration: 301 }), /longer than 300/);
+  assert.match(checkVideo({ ...ok, size: 2.2e9 }), /bigger than 2 GB/);
+  assert.match(checkVideo({ ...ok, width: 7680, height: 4320 }), /larger than 4K/);
+  assert.match(checkVideo({ ...ok, duration: NaN }), /couldn't read/);
+  assert.match(checkVideo({ ...ok, width: 0 }), /couldn't read/);
+});
+
+test("laplacianVariance is high for detail, zero for flat, and ignores colour order", () => {
+  const w = 16, h = 16, flat = new Uint8ClampedArray(w * h * 4).fill(120);
+  const noisy = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) { const v = (i * 97) % 255; noisy.set([v, v, v, 255], i * 4); }
+  assert.equal(laplacianVariance(flat, w, h), 0);
+  assert.ok(laplacianVariance(noisy, w, h) > 1000);
+  const soft = new Uint8ClampedArray(w * h * 4);   // a gentle ramp: little curvature
+  for (let i = 0; i < w * h; i++) { const v = (i % w) * 8; soft.set([v, v, v, 255], i * 4); }
+  assert.ok(laplacianVariance(soft, w, h) < laplacianVariance(noisy, w, h) / 100);
+});
+
+test("candidateTimes spreads windows over the video and stays inside it", () => {
+  const w = candidateTimes(30, 10, 3);
+  assert.equal(w.length, 10);
+  assert.ok(w.every((c) => c.length === 3 && c.every((t) => t > 0 && t < 30)));
+  assert.ok(w[0][0] < w[1][0] && w[8][2] < w[9][2]);
+  assert.equal(candidateTimes(2, 80, 3).length, 80); // short video: still the requested windows, closely spaced
+});
+
+test("pickSharpest takes the best candidate of each window", () => {
+  assert.deepEqual(pickSharpest([[1, 5, 2], [9, 3, 3], [0, 0, 4]]), [1, 0, 2]);
+  assert.deepEqual(pickSharpest([[NaN, 2]]), [1]);
+});
+
+test("fitSide keeps aspect ratio and never upscales", () => {
+  assert.deepEqual(fitSide(1920, 1080, 1024), [1024, 576]);
+  assert.deepEqual(fitSide(1080, 1920, 1024), [576, 1024]);
+  assert.deepEqual(fitSide(640, 480, 1024), [640, 480]);
+});
+
+test("crc32 matches the standard check value", () => {
+  assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926);
+});
+
+test("makeZip writes a stored zip that a real unzip can read", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { writeFileSync, mkdtempSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const files = [{ name: "frame_0000.jpg", bytes: new Uint8Array([1, 2, 3, 4, 5]) }, { name: "frame_0001.jpg", bytes: new Uint8Array(70000).fill(7) }];
+  const z = makeZip(files);
+  const dir = mkdtempSync(join(tmpdir(), "zip-"));
+  writeFileSync(join(dir, "a.zip"), z);
+  execFileSync("unzip", ["-o", "-q", join(dir, "a.zip"), "-d", join(dir, "out")]);
+  assert.deepEqual([...readFileSync(join(dir, "out", "frame_0000.jpg"))], [1, 2, 3, 4, 5]);
+  assert.equal(readFileSync(join(dir, "out", "frame_0001.jpg")).length, 70000);
+  assert.throws(() => makeZip([{ name: "../x.jpg", bytes: new Uint8Array(1) }]), /name/);
+});
+
+// ---------- hybrid helpers that need no browser ----------
+test("parseServerUrl accepts http(s) origins and refuses everything else", async () => {
+  const { parseServerUrl, cameraCentres, DEFAULT_SERVER } = await import("../../viewer/js/hybrid.js");
+  assert.equal(parseServerUrl("http://127.0.0.1:8787/"), "http://127.0.0.1:8787");
+  assert.equal(parseServerUrl("https://sfm.example.com/v1/x?y=1"), "https://sfm.example.com");
+  assert.equal(parseServerUrl(""), DEFAULT_SERVER);
+  for (const bad of ["ftp://x", "javascript:alert(1)", "file:///etc/passwd", "not a url", "https://user:pw@x.com"]) assert.throws(() => parseServerUrl(bad));
+  // identity pose at t = (1, 2, 3): the camera sits at (-1, -2, -3)
+  const p = { frames: [{ R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [1, 2, 3] }, { R: [1, 2], t: [0, 0, 0] }] };
+  assert.deepEqual(cameraCentres(p), [[-1, -2, -3]]);
+});
