@@ -100,6 +100,6 @@ The Modal limits and prices below are from search results, not from reading Moda
 - Rooms with mirrors, glass, moving people, very dark or blank surfaces; non-rectangular rooms beyond one synthetic L-shape; ceilings (the sample's ceiling is not detected, so no height is reported).
 - Operating systems other than macOS on Apple silicon; CUDA.
 - Browsers other than desktop Chrome and Chrome emulating a phone; real touch devices.
-- CI: the workflow ran green on GitHub for commits 4d2b203 and d2c0c56 (checked through the public Actions API); later commits were still running when this was written.
+- CI: all four jobs (lint/types/vendor hashes, Python and Node tests, the Chrome tests, dependency audit) were green on GitHub for commit a4afc15 (2026-11-12, checked through the public Actions API). Before that, three runs failed in the Chrome job: one test (`test_keyboard_reaches_everything_and_shortcuts_work`) did not get a file chooser after Enter on the drop zone, with the page in a normal state and no errors; it passed on the next run without a code change that touches it, and **I did not find the cause** (it never failed on this Mac). The hybrid end-to-end test is skipped on CI because the runner's software GPU has no `shader-f16`. The test now reports the page state if it fails again.
 - Vercel: not deployed. The Vercel connector refused project creation and the Vercel CLI is not installed. GitHub Pages is the live host.
 - Vulnerabilities inside OpenCV, FFmpeg, COLMAP or PyTorch beyond what `pip-audit` reports.
