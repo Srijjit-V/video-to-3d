@@ -378,7 +378,16 @@ def test_keyboard_reaches_everything_and_shortcuts_work(desktop, hosted_url):
         state = pg.evaluate("({active: document.activeElement && (document.activeElement.id || document.activeElement.tagName), "
                             "mode: document.documentElement.dataset.mode, accept: document.getElementById('file').accept, "
                             "hidden: document.getElementById('start').hidden})")
-        raise AssertionError(f"no file chooser after Enter on #drop: {state}; page errors: {desktop.errors}; {str(e)[:120]}") from e
+        retry = "not tried"
+        try:  # does a narrow accept list open the chooser on this machine?
+            pg.evaluate("document.getElementById('file').accept = '.ply,.json,.png'")
+            pg.focus("#drop")
+            with pg.expect_file_chooser(timeout=10000):
+                pg.keyboard.press("Enter")
+            retry = "narrow accept list WORKS"
+        except Exception:  # noqa: BLE001
+            retry = "narrow accept list also fails"
+        raise AssertionError(f"no file chooser after Enter on #drop: {state}; {retry}; page errors: {desktop.errors}; {str(e)[:80]}") from e
     open_sample(desktop, hosted_url)
     for key, btn in (("m", "#tool-measure"), ("p", "#tool-pick")):
         pg.keyboard.press(key)
