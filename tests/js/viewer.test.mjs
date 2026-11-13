@@ -270,3 +270,13 @@ test("fetchVerified returns the bytes only when their SHA-384 matches the record
   await assert.rejects(() => fetchVerified("https://x.example/a.js", sri, async () => ({ ok: false, status: 503 })), /503|download/i);
   await assert.rejects(() => fetchVerified("https://x.example/a.js", undefined, good), /hash/i); // no recorded hash: never run it
 });
+
+test("pickDevice uses WebGPU only when the adapter supports 16-bit float shaders (the q4f16 model needs them)", async () => {
+  const { pickDevice } = await import("../../viewer/js/depth.js");
+  const nav = (features) => ({ gpu: { requestAdapter: async () => (features ? { features: new Set(features) } : null) } });
+  assert.equal(await pickDevice(nav(["shader-f16"])), "webgpu");
+  assert.equal(await pickDevice(nav([])), "wasm");        // e.g. a software adapter
+  assert.equal(await pickDevice(nav(null)), "wasm");       // no adapter
+  assert.equal(await pickDevice({}), "wasm");              // no navigator.gpu
+  assert.equal(await pickDevice({ gpu: { requestAdapter: async () => { throw new Error("boom"); } } }), "wasm");
+});

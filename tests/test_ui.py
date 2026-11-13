@@ -288,9 +288,10 @@ def test_hosted_hybrid_picks_frames_asks_consent_then_gets_the_camera_path(gpu_d
     pg = gpu_desktop.page
     pg.on("request", lambda r: seen.append((r.method, r.url, r.post_data_buffer and len(r.post_data_buffer))))
     pg.goto(hosted_url)
-    if not pg.evaluate("async () => !!(navigator.gpu && await navigator.gpu.requestAdapter())"):  # WebGPU needs a secure context: localhost is one
+    # a real GPU with 16-bit float shaders is needed (software adapters have no shader-f16; the CPU path takes about 8 minutes)
+    if not pg.evaluate("async () => { const a = navigator.gpu && await navigator.gpu.requestAdapter(); return !!(a && a.features.has('shader-f16')); }"):
         srv.shutdown()
-        pytest.skip("needs a browser with WebGPU (the CPU path takes about 8 minutes for this video)")
+        pytest.skip("needs a browser with a real WebGPU adapter that supports shader-f16")
     pg.click("#advanced summary")
     pg.fill("#opt-server", f"http://127.0.0.1:{srv.server_address[1]}")
     pg.fill("#opt-camera", "1.5")  # the true camera height of the synthetic room
@@ -364,6 +365,7 @@ def test_hosted_rejects_a_bad_file_with_a_message(desktop, hosted_url, tmp_path)
 def test_keyboard_reaches_everything_and_shortcuts_work(desktop, hosted_url):
     pg = desktop.page
     pg.goto(hosted_url)
+    until(pg, "document.documentElement.dataset.mode === 'hosted'")  # the page has wired its handlers (slower on CI)
     pg.keyboard.press("Tab")
     assert pg.evaluate("document.activeElement.className") == "skip"
     pg.keyboard.press("Enter")

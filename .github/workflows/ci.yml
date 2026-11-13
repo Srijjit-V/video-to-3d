@@ -66,19 +66,30 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m playwright install --with-deps chromium
       # Hosted mode, the local-mode page, the sample scene, colour picker, console errors, phone layout, contrast.
-      - run: python -m pytest -q tests/test_ui.py -rfE --junitxml=ui-junit.xml
+      - name: Browser tests
+        id: ui-tests
+        run: python -m pytest -q tests/test_ui.py -rfE --junitxml="$RUNNER_TEMP/ui-junit.xml"
         env:
           VID3D_UI: "1"
       # Show each failing test and its message as an annotation (readable on the run page and through the API without a login).
+      # The report is written outside the checkout by the step above; messages are percent-encoded so they cannot inject workflow commands.
       - name: Annotate failing tests
-        if: failure()
+        if: failure() && steps.ui-tests.outcome == 'failure'
         run: |
+          pip install defusedxml
           python - <<'PY'
-          import xml.etree.ElementTree as ET
-          for case in ET.parse("ui-junit.xml").iter("testcase"):
-              for bad in list(case.findall("failure")) + list(case.findall("error")):
-                  msg = " ".join((bad.get("message") or "").split())[:400]
-                  print(f"::error title={case.get('name')}::{msg}")
+          import os
+          from defusedxml import ElementTree as ET
+
+          def enc(s, prop=False):
+              s = " ".join((s or "").split())[:400].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              return s.replace(":", "%3A").replace(",", "%2C") if prop else s
+
+          path = os.path.join(os.environ["RUNNER_TEMP"], "ui-junit.xml")
+          if os.path.exists(path):
+              for case in ET.parse(path).iter("testcase"):
+                  for bad in list(case.findall("failure")) + list(case.findall("error")):
+                      print(f"::error title={enc(case.get('name'), True)}::{enc(bad.get('message'))}")
           PY
 
   audit:

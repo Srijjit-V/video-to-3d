@@ -28,9 +28,13 @@ export async function fetchVerified(url, expected, fetchImpl = fetch) {
   return buf;
 }
 
-/** Which device depth will run on: "webgpu" if an adapter exists, else "wasm". */
-export async function pickDevice() {
-  try { if (navigator.gpu && (await navigator.gpu.requestAdapter())) return "webgpu"; } catch { /* no WebGPU */ }
+/** Which device depth will run on: "webgpu" only if there is an adapter that supports 16-bit float shaders (the q4f16 model needs
+ *  them; a software adapter does not), otherwise "wasm". */
+export async function pickDevice(nav = navigator) {
+  try {
+    const adapter = nav.gpu && (await nav.gpu.requestAdapter());
+    if (adapter?.features?.has("shader-f16")) return "webgpu";
+  } catch { /* no WebGPU */ }
   return "wasm";
 }
 
