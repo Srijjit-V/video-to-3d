@@ -66,9 +66,20 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m playwright install --with-deps chromium
       # Hosted mode, the local-mode page, the sample scene, colour picker, console errors, phone layout, contrast.
-      - run: python -m pytest -q tests/test_ui.py
+      - run: python -m pytest -q tests/test_ui.py -rfE --junitxml=ui-junit.xml
         env:
           VID3D_UI: "1"
+      # Show each failing test and its message as an annotation (readable on the run page and through the API without a login).
+      - name: Annotate failing tests
+        if: failure()
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          for case in ET.parse("ui-junit.xml").iter("testcase"):
+              for bad in list(case.findall("failure")) + list(case.findall("error")):
+                  msg = " ".join((bad.get("message") or "").split())[:400]
+                  print(f"::error title={case.get('name')}::{msg}")
+          PY
 
   audit:
     name: Dependency audit
