@@ -87,18 +87,12 @@ def gpu_desktop(gpu_browser):
 
 
 @pytest.fixture(scope="session")
-def h264_video(tmp_path_factory):
-    """The synthetic room re-encoded as H.264: browsers can't decode the sample's MPEG-4 Part 2, phones record H.264 or HEVC."""
-    out = tmp_path_factory.mktemp("h264") / "synthetic_room_h264.mp4"
-    src = cv2.VideoCapture(str(VIDEO))
-    ok, frame = src.read()
-    vw = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"avc1"), 30, (frame.shape[1], frame.shape[0]))
-    while ok:
-        vw.write(frame)
-        ok, frame = src.read()
-    vw.release()
-    assert out.stat().st_size > 10_000
-    return out
+def h264_video():
+    """The synthetic room as H.264 (tests/data, 6 s, 640 x 480): browsers cannot decode the sample's MPEG-4 Part 2, phones record H.264 or HEVC.
+    Committed so the test does not depend on the machine's OpenCV having an H.264 encoder (CI runners often do not)."""
+    path = ROOT / "tests" / "data" / "synthetic_room_h264.mp4"
+    assert path.exists() and path.stat().st_size > 10_000
+    return path
 
 
 @pytest.fixture

@@ -256,3 +256,17 @@ test("resizeBilinear keeps an image the same size, and interpolates a ramp", asy
   assert.match(MODEL.revision, /^[0-9a-f]{40}$/); // the model is pinned to one commit
   assert.equal(MODEL.dtype, "q4f16");
 });
+
+// ---------- hash-checked loading of the remote AI runtime ----------
+test("fetchVerified returns the bytes only when their SHA-384 matches the recorded hash", async () => {
+  const { fetchVerified, sriOf } = await import("../../viewer/js/depth.js");
+  const bytes = new TextEncoder().encode("hello runtime");
+  const sri = await sriOf(bytes);
+  assert.match(sri, /^sha384-[A-Za-z0-9+/]{64}$/);
+  const good = async () => ({ ok: true, arrayBuffer: async () => bytes.buffer.slice(0) });
+  assert.equal((await fetchVerified("https://x.example/a.js", sri, good)).byteLength, bytes.length);
+  const tampered = async () => ({ ok: true, arrayBuffer: async () => new TextEncoder().encode("hello runtimE").buffer });
+  await assert.rejects(() => fetchVerified("https://x.example/a.js", sri, tampered), /does not match|refus/i);
+  await assert.rejects(() => fetchVerified("https://x.example/a.js", sri, async () => ({ ok: false, status: 503 })), /503|download/i);
+  await assert.rejects(() => fetchVerified("https://x.example/a.js", undefined, good), /hash/i); // no recorded hash: never run it
+});

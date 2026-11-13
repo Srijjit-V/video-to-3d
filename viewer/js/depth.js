@@ -4,10 +4,29 @@ import { frameLuma } from "./core/color.js";
 
 export const MODEL = { id: "onnx-community/depth-anything-v2-small", revision: "4472b7362082ad9968fee890ca0f1e5aca36b93d", dtype: "q4f16", sizeMB: 19 };
 const ORT_VERSION = "1.31.0-dev.20260914-8d85527a0";
-// Loaded from jsDelivr at an exact version (the file cannot be bundled: GitHub's secret scanner flags a constant inside it). Its hash is
-// recorded in vendor/transformers/HASHES.json and checked against the npm package by scripts/verify_vendor.py --official.
+// Both files are loaded from jsDelivr at exact versions (transformers.js cannot be bundled: GitHub's secret scanner flags a constant inside it;
+// the wasm is 27 MB). Their SHA-384 hashes are recorded in vendor/transformers/HASHES.json and checked against the npm packages by
+// scripts/verify_vendor.py --official. At run time the page downloads each file, checks its hash and refuses to run it on a mismatch.
 const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js";
+const ORT_WASM_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/ort-wasm-simd-threaded.asyncify.wasm`;
 const abortError = () => new DOMException("Cancelled", "AbortError");
+
+/** "sha384-<base64>" of some bytes (Subresource Integrity format). */
+export async function sriOf(bytes) {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-384", bytes));
+  let bin = ""; for (const b of d) bin += String.fromCharCode(b);
+  return "sha384-" + btoa(bin);
+}
+
+/** Downloads a file and returns its bytes only if their SHA-384 equals `expected`. Never runs or returns unverified bytes. */
+export async function fetchVerified(url, expected, fetchImpl = fetch) {
+  if (!expected) throw new Error("No recorded hash for a file the AI runtime needs, so it was not loaded.");
+  const r = await fetchImpl(url);
+  if (!r.ok) throw new Error(`Could not download a file the AI runtime needs (${r.status ?? "network error"}).`);
+  const buf = await r.arrayBuffer();
+  if ((await sriOf(buf)) !== expected) throw new Error("A downloaded AI runtime file does not match its recorded hash, so it was not run (the CDN file may have changed).");
+  return buf;
+}
 
 /** Which device depth will run on: "webgpu" if an adapter exists, else "wasm". */
 export async function pickDevice() {
@@ -18,13 +37,21 @@ export async function pickDevice() {
 /** Loads the model once. onStatus gets plain-language progress. Resolves with { device, disparity(blob, w, h) }. */
 export async function loadDepth({ onStatus = () => {}, device } = {}) {
   onStatus("loading the AI library");
-  const { pipeline, env, RawImage } = await import(TRANSFORMERS_URL);
+  const hashes = await (await fetch(new URL("../vendor/transformers/HASHES.json", import.meta.url))).json();
+  onStatus("loading the AI library (checking its hash)");
+  const lib = await fetchVerified(TRANSFORMERS_URL, hashes["transformers.min.js"]);
+  const libUrl = URL.createObjectURL(new Blob([lib], { type: "text/javascript" }));
+  let mod;
+  try { mod = await import(libUrl); } finally { URL.revokeObjectURL(libUrl); }
+  const { pipeline, env, RawImage } = mod;
   env.allowLocalModels = false;
   env.useBrowserCache = true;
   env.backends.onnx.wasm.numThreads = 1; // multi-threading needs cross-origin isolation, which a static host cannot give
+  onStatus("loading the AI runtime (27 MB, checking its hash)");
+  const wasm = await fetchVerified(ORT_WASM_URL, hashes["ort-wasm-simd-threaded.asyncify.wasm"]);
   env.backends.onnx.wasm.wasmPaths = {
     mjs: new URL("../vendor/transformers/ort-wasm-simd-threaded.asyncify.mjs", import.meta.url).href,
-    wasm: `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/ort-wasm-simd-threaded.asyncify.wasm`,
+    wasm: URL.createObjectURL(new Blob([wasm], { type: "application/wasm" })),
   };
   let dev = device || (await pickDevice()), pipe = null, lastError = null;
   const seen = new Set();
