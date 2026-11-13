@@ -58,21 +58,24 @@ export function qualityWarnings(scene: { frames_registered: number; frames_extra
   return w;
 }
 
-export async function buildScene(payload: SfmPayload, source: FrameSource, opts: Options = {}): Promise<BuiltScene> {
+/** Observations in front of the camera only (z > 0): the Python loader drops the rest, so a hostile payload cannot reach the maths. */
+export const usable = (obs: number[][]): number[][] => obs.filter((o) => o[2] > 0);
+
+/** Stage 3 result: dense points from every frame, before fusion. Plain arrays so it can be sent to a worker. */
+export interface Collected { points: Float32Array; colors: Uint8Array; frames: Int32Array; fits: number[] }
+
+/** Stage 3: for each placed frame, fit the AI disparity to the sparse points, make dense depth, back-project. */
+export async function collectPoints(payload: SfmPayload, source: FrameSource, opts: Options = {}): Promise<Collected> {
   validatePayload(payload);
-  const t0 = Date.now(), stride = opts.stride ?? 4, progress = opts.onProgress ?? (() => {});
+  const stride = opts.stride ?? 4, progress = opts.onProgress ?? (() => {});
   const { width: W, height: H, focal, cx, cy, k1 } = payload.camera;
   const views: View[] = payload.frames.map((f) => ({ fx: focal, fy: focal, cx, cy, R: f.R, t: f.t }));
-  const n = views.length;
-
-  // stage 3: depth fitted to the sparse points, back-projected
-  const lumas: number[] = [];
+  const n = views.length, lumas: number[] = [];
   for (let i = 0; i < n; i++) lumas.push(await source.luma(i));
   const gains = exposureGains(lumas);
-  const P: number[] = [], C: number[] = [], F: number[] = [];
-  const fits: number[] = [];
+  const P: number[] = [], C: number[] = [], F: number[] = [], fits: number[] = [];
   for (let i = 0; i < n; i++) {
-    const { rgb, disp } = await source.frame(i), obs = payload.frames[i].obs;
+    const { rgb, disp } = await source.frame(i), obs = usable(payload.frames[i].obs);
     progress(3, i + 1, n);
     if (obs.length < 20) continue;
     const ds = new Float64Array(obs.length), z = new Float64Array(obs.length);
@@ -91,14 +94,20 @@ export async function buildScene(payload: SfmPayload, source: FrameSource, opts:
     fits.push(fit.inliers);
   }
   if (!P.length) fail("The AI depth could not be matched to the camera path on any frame. Try a video with more texture and steady lighting.");
+  return { points: Float32Array.from(P), colors: Uint8Array.from(C), frames: Int32Array.from(F), fits };
+}
 
-  // stage 4: fuse (a point survives only if two frames agree)
+/** Stages 4-6: fuse, find the floor and scale, measure the room, ranges, confidence. No pictures needed, so it can run in a worker. */
+export function finishScene(payload: SfmPayload, c: Collected, opts: Options = {}): BuiltScene {
+  const t0 = Date.now(), progress = opts.onProgress ?? (() => {});
+  const { focal, cx, cy } = payload.camera;
+  const views: View[] = payload.frames.map((f) => ({ fx: focal, fy: focal, cx, cy, R: f.R, t: f.t }));
+  const n = views.length;
   progress(4, 0, 1);
-  const medianZ = median(payload.frames.flatMap((f) => f.obs.map((o) => o[2])));
-  const fused = fuse(P, C, F, medianZ / 200, 2);
-  let raw = fused.points;
-
-  // stage 5: floor, scale, yaw
+  const medianZ = median(payload.frames.flatMap((f) => usable(f.obs).map((o) => o[2])));
+  if (!(medianZ > 0)) fail("The camera solve gave no usable depths (every observation was behind the camera).");
+  const fused = fuse(c.points, c.colors, c.frames, medianZ / 200, 2);
+  const raw = fused.points;
   progress(5, 0, 1);
   const cams = new Float64Array(n * 3);
   views.forEach((v, i) => cams.set(viewCenter(v), 3 * i));
@@ -133,8 +142,6 @@ export async function buildScene(payload: SfmPayload, source: FrameSource, opts:
     for (let i = 0; i < A.length / 3; i++) { A[3 * i] = r[2 * i]; A[3 * i + 2] = r[2 * i + 1]; }
   };
   rotate(pts); rotate(camsM);
-
-  // stage 6: room, ranges, confidence
   progress(6, 0, 1);
   let room: Room = analyze(pts, roomH);
   if (!room || !Object.keys(room).length) room = { incomplete: true, reason: "Too few wall points to measure the room." };
@@ -146,9 +153,9 @@ export async function buildScene(payload: SfmPayload, source: FrameSource, opts:
     scale_method: method,
     frames_extracted: payload.frames_total,
     frames_registered: payload.frames.length,
-    frames_with_depth: fits.length,
+    frames_with_depth: c.fits.length,
     sfm_reprojection_error_px: roundTo(payload.reprojection_error_px, 3),
-    mean_depth_fit_inliers: roundTo(fits.reduce((s, v) => s + v, 0) / Math.max(1, fits.length), 3),
+    mean_depth_fit_inliers: roundTo(c.fits.reduce((s, v) => s + v, 0) / Math.max(1, c.fits.length), 3),
     points: pts.length / 3,
     cameras: Array.from({ length: n }, (_, i) => [0, 1, 2].map((j) => roundTo(camsM[3 * i + j], 3))),
     room, palette: palette(pts, fused.colors, room, roomH),
@@ -156,8 +163,12 @@ export async function buildScene(payload: SfmPayload, source: FrameSource, opts:
     camera_height: camHeight, uncertainty: unc, confidence: conf, warnings: [] as string[],
   };
   scene.warnings = qualityWarnings({ ...scene, room, camera_height: camHeight });
-  raw = new Float32Array(0);
   return { points: pts, colors: fused.colors, views: fused.views, scene };
+}
+
+/** All of stages 3-6 in one call (Node, tests). */
+export async function buildScene(payload: SfmPayload, source: FrameSource, opts: Options = {}): Promise<BuiltScene> {
+  return finishScene(payload, await collectPoints(payload, source, opts), opts);
 }
 
 /** The range line the CLI prints, e.g. "3.81 to 4.24 m x 4.74 to 5.26 m, area 18 to 22.3 m²". */

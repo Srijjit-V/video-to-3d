@@ -245,3 +245,14 @@ test("parseServerUrl accepts http(s) origins and refuses everything else", async
   const p = { frames: [{ R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [1, 2, 3] }, { R: [1, 2], t: [0, 0, 0] }] };
   assert.deepEqual(cameraCentres(p), [[-1, -2, -3]]);
 });
+
+// ---------- browser depth helpers that need no model ----------
+test("resizeBilinear keeps an image the same size, and interpolates a ramp", async () => {
+  const { resizeBilinear, MODEL } = await import("../../viewer/js/depth.js");
+  const src = Float32Array.from([0, 1, 2, 3, 4, 5]); // 3 x 2
+  assert.deepEqual([...resizeBilinear(src, 3, 2, 3, 2)], [...src]);
+  const up = resizeBilinear(Float32Array.from([0, 10]), 2, 1, 4, 1);
+  assert.ok(up[0] <= up[1] && up[1] < up[2] && up[2] < up[3] && up[3] <= 10);
+  assert.match(MODEL.revision, /^[0-9a-f]{40}$/); // the model is pinned to one commit
+  assert.equal(MODEL.dtype, "q4f16");
+});

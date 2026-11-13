@@ -1,0 +1,5 @@
+{
+  "transformers.min.js": "sha384-xFDNfwR3J/vPYzGjMr1VSM8LHIcA+ii2Ha4x+6WAuISKpT9I0dxgF/mVQW+I0kSd",
+  "ort-wasm-simd-threaded.asyncify.mjs": "sha384-ik7L7J2uXfXmGuWHh3yOUDPpUslz/dJjcvZgdX5hcItLjxlkEpUF7mpCcATr3Dg8",
+  "ort-wasm-simd-threaded.asyncify.wasm": "sha384-JuzrCV6BUmTUbsgNhgU94qo0vZ4l3w0VqgQAKPm0La2hXL9kmv8P9pGenfsWJY9c"
+}

@@ -130,6 +130,8 @@ sequenceDiagram
     C->>C: depth, fit, fusion, floor and scale, ranges, floor plan
 ```
 
+In the browser the same seam is used: the page does stages 1, 3, 4, 5 and 6 on the device (frame picking on the main thread, AI depth on WebGPU or WASM, fusion to ranges in a worker) and only stage 2 (COLMAP) on the server. `ts/src` is a port of `src/vid3d` checked against it by golden vectors.
+
 The payload format is documented in `src/vid3d/sfm_payload.py` and validated on both sides. Local mode (`vid3d process`) writes the same data to `work/sfm.npz`; any solver that produces the payload (the server, colmap-wasm) plugs in at the same point.
 
 ## Modules

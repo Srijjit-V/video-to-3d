@@ -5,7 +5,9 @@ import { parsePly } from "./ply.js";
 import { RAMP, availableModes } from "./colors.js";
 import { detectMode, uploadVideo, getJob, cancelJob } from "./jobs.js";
 import { demoSteps, markDone } from "./demo.js";
-import { parseServerUrl, extractFrames, solveOnServer, cameraCentres } from "./hybrid.js";
+import { parseServerUrl, extractFrames, solveOnServer } from "./hybrid.js";
+import { collectPoints, writePly } from "./core/pipeline.js";
+import { loadDepth, makeSource } from "./depth.js";
 import { floorPlanJson, floorPlanSvg } from "./export.js";
 import { confidenceView, esc, fmtLen, fmtRange, mmss, textOn } from "./format.js";
 
@@ -38,13 +40,12 @@ function setupMode() {
     $("mode-note").textContent = "Everything stays on this computer. Processing takes about three minutes.";
   } else {
     file.accept = "video/*,.mp4,.mov,.m4v,.webm,.ply,.json,.png";
-    for (const id of ["opt-camera", "opt-ceiling"]) $(id).closest("label").hidden = true; // used by stages that are not in the browser yet
     $("server-field").hidden = false;
     try { $("opt-server").value = localStorage.getItem("vid3d-server") || ""; } catch { /* storage blocked */ }
     $("drop-title").textContent = "Drop a video here";
     $("drop-sub").textContent = "or choose a file · or drop a cloud.ply and scene.json to view a scan";
     $("mode-note").textContent = "Frames are picked on your device. Nothing leaves it until you say so, and then only small pictures, never the video. "
-      + "Measuring from the pictures is not in the browser yet (the camera path is the first part); the sample room shows the full result.";
+      + "The depth and measuring also run on your device (the AI model, 19 MB, downloads once).";
   }
 }
 
@@ -150,8 +151,7 @@ async function startJob(file) {
 
 // ---------- hybrid mode (hosted page): frames on this device, camera path on a server ----------
 
-const HYBRID_WHERE = ["on your device", "on the server", "on your device · not in the browser yet", "on your device · not in the browser yet",
-  "on your device · not in the browser yet", "on your device · not in the browser yet"];
+const HYBRID_WHERE = ["on your device", "on the server", "on your device", "on your device", "on your device", "on your device"];
 let hy = null; // { abort, frames, thumbs }
 
 function setStage(i, status, detail = "") {
@@ -181,12 +181,10 @@ async function startHybrid(file) {
   } catch (e) { return fail(e.message); }
   dropHybrid();
   const abort = new AbortController();
-  hy = { abort, frames: [], thumbs: [] };
+  hy = { abort, frames: [], thumbs: [], fileName: file.name };
   show("progress");
   buildStages(HYBRID_WHERE);
-  STAGES.forEach((_, i) => i >= 2 && setStage(i, "pending", "Not available in the browser yet"));
   $("prog-error").hidden = true;
-  $("hybrid-result").hidden = true;
   $("again-btn").hidden = true;
   $("cancel-btn").hidden = false;
   $("cancel-btn").disabled = false;
@@ -225,7 +223,7 @@ function showConsent(server) {
 
 async function sendFrames(server) {
   if (!hy) return;
-  const { abort, frames } = hy;
+  const { abort, frames, fileName } = hy;
   show("progress");
   $("cancel-btn").hidden = false;
   $("cancel-btn").disabled = false;
@@ -238,32 +236,52 @@ async function sendFrames(server) {
       onUpload: (f) => { setStage(1, "running", `uploading ${Math.round(f * 100)}%`); hybridSummary("Stage 2: sending pictures to the server", 0.3 + 0.1 * f); },
       onUploaded: () => { setStage(1, "running", "solving on the server, about a minute"); hybridSummary("Stage 2: the server is solving the camera path", 0.45); },
     });
-    dropHybrid();
-    clearInterval(ticker);
     const placed = payload.frames.length, total = Number.isFinite(payload.frames_total) ? payload.frames_total : frames.length;
     setStage(1, "done", `${placed} of ${total} frames placed`);
-    hybridSummary(`Camera path found: ${placed} of ${total} frames placed`, 0.5);
-    showPath(payload, placed, total);
-    $("cancel-btn").hidden = true;
-    $("again-btn").hidden = false;
-    $("again-btn").focus();
+    await measureOnDevice(payload, frames, fileName, abort.signal);
   } catch (e) { hybridFailed(e); }
 }
 
-function showPath(payload, placed, total) {
-  const c = cameraCentres(payload), svg = $("path-plot");
-  svg.replaceChildren();
-  if (c.length > 1) {
-    const xs = c.map((p) => p[0]), zs = c.map((p) => p[2]);
-    const lo = [Math.min(...xs), Math.min(...zs)], span = Math.max(Math.max(...xs) - lo[0], Math.max(...zs) - lo[1], 1e-9);
-    const pts = c.map((p) => `${(10 + 180 * (p[0] - lo[0]) / span).toFixed(1)},${(10 + 180 * (p[2] - lo[1]) / span).toFixed(1)}`).join(" ");
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-    line.setAttribute("points", pts); line.setAttribute("fill", "none"); line.setAttribute("stroke", "currentColor"); line.setAttribute("stroke-width", "2");
-    svg.append(line);
-  }
-  $("hybrid-result-msg").textContent = `The server placed ${placed} of ${total} pictures along your walk (plotted from above, arbitrary units). `
-    + "Turning that into a measured room (depth, floor, scale, size) is not in the browser yet. To get the full result today, run vid3d on your computer, or open the sample room.";
-  $("hybrid-result").hidden = false;
+/** Stages 3-6 on this device: AI depth per frame (main thread, GPU if there is one), then fusion, floor, scale and the room in a worker. */
+async function measureOnDevice(payload, frames, fileName, signal) {
+  const started = Date.now();
+  setStage(2, "running", "loading the depth model");
+  hybridSummary("Stage 3: AI depth on your device", 0.5);
+  const depth = await loadDepth({ onStatus: (t) => setStage(2, "running", t) });
+  if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
+  const n = payload.frames.length, where = depth.device === "webgpu" ? "graphics chip" : "processor (no WebGPU here, so slower)";
+  const source = makeSource(frames, payload, depth, { signal, onFrame: (i) => {
+    setStage(2, "running", `frame ${i} of ${n} · ${where}`);
+    hybridSummary("Stage 3: AI depth on your device", 0.5 + 0.35 * (i / n));
+  } });
+  const collected = await collectPoints(payload, source, {});
+  setStage(2, "done", `${n} frames, ${depth.device === "webgpu" ? "graphics chip" : "processor"}`);
+  const opts = { cameraHeight: parseFloat($("opt-camera").value) || null, ceilingHeight: parseFloat($("opt-ceiling").value) || null,
+    videoLabel: fileName.replace(/[\\/]/g, "_"), secondsSoFar: (Date.now() - started) / 1000 };
+  const labels = { 4: "fusing the frames into one cloud", 5: "finding the floor and the real-world scale", 6: "measuring the room and its error range" };
+  for (let k = 3; k < 6; k++) setStage(k, "pending", "");
+  setStage(3, "running", labels[4]);
+  hybridSummary("Stages 4 to 6: building the model on your device", 0.88);
+  const result = await new Promise((resolve, reject) => {
+    const w = new Worker(new URL("./core/scene-worker.js", import.meta.url), { type: "module" });
+    signal.addEventListener("abort", () => { w.terminate(); reject(new DOMException("Cancelled", "AbortError")); }, { once: true });
+    w.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === "progress") {
+        for (let k = 3; k < 6; k++) setStage(k, k + 1 < m.stage ? "done" : k + 1 === m.stage ? "running" : "pending", k + 1 === m.stage ? labels[m.stage] : "");
+        hybridSummary(`Stage ${m.stage} of 6: ${labels[m.stage]}`, 0.85 + 0.05 * (m.stage - 3));
+      } else if (m.type === "done") { w.terminate(); resolve(m.result); }
+      else { w.terminate(); reject(new Error(m.message)); }
+    };
+    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || "The measuring step crashed.")); };
+    w.postMessage({ payload, collected, options: opts }, [collected.points.buffer, collected.colors.buffer, collected.frames.buffer]);
+  });
+  for (let k = 3; k < 6; k++) setStage(k, "done", "");
+  clearInterval(ticker);
+  hybridSummary("Done", 1);
+  dropHybrid();
+  const ply = writePly(result.points, result.colors, result.views);
+  openScene(parsePly(ply.buffer), result.scene, null);
 }
 
 function hybridFailed(e) {
@@ -272,7 +290,7 @@ function hybridFailed(e) {
   if (e?.name === "AbortError") return show("start");
   const at = [...$("stage-list").children].findIndex((li) => li.dataset.status === "running");
   if (at >= 0) setStage(at, "error", "");
-  stopWithError("That didn't work", e.message, [], at === 1 ? "Stopped at stage 2: the camera path" : "Stopped at stage 1: picking frames");
+  stopWithError("That didn't work", e.message, [], at >= 0 ? `Stopped at stage ${at + 1} of 6: ${STAGES[at]}` : "Stopped");
 }
 
 async function poll(id) {

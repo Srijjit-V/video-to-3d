@@ -22,10 +22,10 @@ A phone video becomes a metric point cloud, a room size **with a 90% range and a
 </div>
 
 > [!IMPORTANT]
-> **The hosted page cannot yet turn a video into a measured room.** That needs COLMAP and an AI model, so the full result runs on **your own computer**
-> (`vid3d serve`). The hosted page can open the bundled demo scans and any `cloud.ply` + `scene.json` you drop on it (files stay in your browser), and it
-> can take a video through the first half: it picks sharp frames **on your device**, asks your consent, sends only those small pictures to a camera-solve server and shows the camera path it gets back.
-> Depth and measuring in the browser are not built yet.
+> **The hosted page can measure a room from a video, but only with a camera-solve server you run yourself.** Everything except the camera path runs **in your browser**:
+> it picks sharp frames, runs the AI depth model (19 MB, on WebGPU if you have it, otherwise far slower) and does the measuring. The camera path needs COLMAP, which
+> only runs on a server: after a consent screen, ~80 small pictures (never the video) go to the server you choose (`python -m vid3d.sfm_server`), which sends back a small payload and deletes the pictures.
+> **No public server exists yet.** Without one, use `vid3d serve` (all on your computer) or the bundled demo.
 >
 > **Accuracy is only measured on a synthetic room.** Real-phone accuracy has not been measured yet ([protocol](docs/BENCHMARK.md)).
 > The error ranges come from a documented model ([docs/MATH.md](docs/MATH.md)), not from real-room statistics.
@@ -113,7 +113,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 | Untrusted input | duration, resolution and frame-count limits before and during decode; 2 GB upload cap, extension allow-list, server-made file names |
 | Local server | `127.0.0.1` only, Host allow-list (DNS rebinding), Origin check, one job at a time, socket timeout, job pruning, traversal tests, CSP |
 | Supply chain | model pinned to a commit and loaded as safetensors; three.js bundled with a SHA-384 integrity hash checked against the npm package; hash-pinned lockfile; `pip-audit` in CI |
-| Quality gates | ruff (with security rules), mypy, 159 Python tests, 24 viewer-logic tests, 16 real-browser tests, GitHub Actions on every push |
+| Quality gates | ruff (with security rules), mypy, 159 Python tests, 51 Node tests (golden + analytic-room + viewer logic), 16 real-browser tests, GitHub Actions on every push |
 | Accessible UI | keyboard-complete, screen-reader labels, tested contrast (23 checks), phone layout verified, strict CSP with no inline script |
 
 ## Explore the code
@@ -139,7 +139,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 
 Measured on 2026-11-10 (details in [docs/VERIFICATION.md](docs/VERIFICATION.md)):
 
-- **159** Python tests pass (20 opt-in skipped); **24** Node tests; **16** browser tests; ruff, mypy and `pip-audit` clean.
+- **159** Python tests pass (20 opt-in skipped); **51** Node tests; **16** browser tests; ruff, mypy and `pip-audit` clean.
 - Synthetic 5.0 x 4.0 m room: with the true camera height, 4.05 x 5.00 m (+1.3%, 0%) and the area range 18.1 to 22.2 m² contained the true 20 m²;
   with the default 1.45 m assumed, 3.90 x 4.85 m (-2.5%, -3.0%) and the range 13.9 to 24.4 m² contained it too.
 - One run per setting; the camera solver varies by a few percent between runs.
@@ -157,7 +157,9 @@ The server needs pycolmap, numpy and headless OpenCV only (no torch). It re-enco
 .venv/bin/vid3d process my_room.mp4 --sfm-server http://127.0.0.1:8787
 ```
 
-Tested end to end on this computer (real COLMAP, synthetic room: 4.05 x 5.0 m, same as the local path). **Browser side (built):** drop a video on the page, open *Advanced options*, enter the server address (default `http://127.0.0.1:8787`; start the server with `--origin` set to the page's address), and the page picks frames, shows a consent screen, sends them and plots the returned camera path. **Not yet built or tested:** the Docker image in `deploy/`, any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, resume after a dropped connection, and depth and measuring in the browser (the result stops at the camera path). Do not expose the server publicly before those exist.
+**Browser flow (built and tested in Chrome on this computer):** drop a video on the page, open *Advanced options* and enter the server address (default `http://127.0.0.1:8787`; start the server with `--origin` set to the page's address). The page then picks frames, shows a consent screen, sends the pictures, runs AI depth and the measuring on your device (about 2.5 minutes in total for the 6-second synthetic room with a WebGPU laptop, most of it the server's COLMAP), and opens the 3D scene with ranges, confidence and floor-plan export.
+Over 5 runs on the synthetic 4.0 x 5.0 m room (true camera height given) the browser path measured the long side 2 to 3% high in four runs and 7% high in one, and the short side 1 to 5% high; the 90% area range contained the true 20 m² in the run that was checked against it. The camera solver varies from run to run.
+**Not yet built or tested:** the Docker image in `deploy/`, any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, resume after a dropped connection, Safari and phone browsers, real phone video, and a fallback that solves the camera path in the browser (colmap-wasm worked with sequential pairing in the spike but is not wired in). Do not expose the server publicly before those exist.
 
 ## Deploy the viewer
 

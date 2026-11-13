@@ -82,3 +82,26 @@ test("validatePayload refuses malformed or hostile payloads in plain words", () 
   assert.throws(bad((p) => { p.frames = []; }), /frames/);
   assert.throws(bad((p) => { p.frames_total = 1; }), /frames_total/);
 });
+
+test("observations behind the camera (z <= 0) are dropped, like the Python loader, and cannot poison the scale", async () => {
+  const { payload, source } = makeRoom({ frames: 12 });
+  const clean = await buildScene(structuredClone(payload), source, { cameraHeight: ROOM.camHeight });
+  const hostile = structuredClone(payload);
+  for (const f of hostile.frames) f.obs.push([10.5, 10.5, 0], [20.5, 20.5, -5], [30.5, 30.5, -1e9]);
+  const out = await buildScene(hostile, source, { cameraHeight: ROOM.camHeight });
+  assert.equal(out.scene.room.length_m, clean.scene.room.length_m);
+  assert.equal(out.scene.room.width_m, clean.scene.room.width_m);
+});
+
+test("a payload whose depths are all non-positive is refused in plain words", async () => {
+  const { payload, source } = makeRoom({ frames: 6 });
+  for (const f of payload.frames) f.obs = f.obs.map((o) => [o[0], o[1], -Math.abs(o[2])]);
+  await assert.rejects(() => buildScene(payload, source, {}), /depth|observation/i);
+});
+
+test("fuse refuses a non-positive or non-finite voxel and a cloud too spread out to index", async () => {
+  const { fuse } = await import("../../viewer/js/core/geometry.js");
+  for (const v of [0, -1, NaN, Infinity]) assert.throws(() => fuse([0, 0, 0], [0, 0, 0], [0], v, 1), /voxel/);
+  assert.throws(() => fuse([0, 0, 0, 1e12, 1e12, 1e12], [0, 0, 0, 0, 0, 0], [0, 0], 0.001, 1), /spread/);
+  assert.throws(() => fuse([0, 0, 0, NaN, 1, 1], [0, 0, 0, 0, 0, 0], [0, 0], 0.5, 1), /finite|spread/);
+});

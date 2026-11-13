@@ -40,6 +40,8 @@ export function backproject(view, depth, rgb, h, w, stride = 4, k1 = 0) {
  *  Output order follows the voxel key, like numpy.unique. */
 export function fuse(points, colors, frames, voxel, minViews = 2) {
     const n = frames.length;
+    if (!(voxel > 0) || !Number.isFinite(voxel))
+        throw new Error("The fusion voxel size must be a positive number.");
     if (!n)
         return { points: new Float32Array(0), colors: new Uint8Array(0), views: new Uint8Array(0) };
     const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
@@ -47,15 +49,17 @@ export function fuse(points, colors, frames, voxel, minViews = 2) {
     for (let i = 0; i < n; i++)
         for (let j = 0; j < 3; j++) {
             const k = Math.floor(points[3 * i + j] / voxel);
+            if (!Number.isFinite(k))
+                throw new Error("The cloud is too spread out (or contains invalid points) to fuse.");
             key[3 * i + j] = k;
             if (k < mn[j])
                 mn[j] = k;
             if (k > mx[j])
                 mx[j] = k;
         }
-    const d1 = mx[1] - mn[1] + 1, d2 = mx[2] - mn[2] + 1;
-    if ((mx[0] - mn[0] + 1) * d1 * d2 > 2 ** 52)
-        throw new Error("The cloud is too spread out to fuse.");
+    const d1 = mx[1] - mn[1] + 1, d2 = mx[2] - mn[2] + 1, span = (mx[0] - mn[0] + 1) * d1 * d2;
+    if (!Number.isFinite(span) || span > 2 ** 52)
+        throw new Error("The cloud is too spread out (or contains invalid points) to fuse.");
     const cells = new Map();
     let prev = -Infinity;
     for (let i = 0; i < n; i++) {

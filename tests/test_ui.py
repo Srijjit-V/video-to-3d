@@ -49,13 +49,18 @@ def serve_in_thread(handler):
 
 
 @pytest.fixture(scope="module")
-def playwright_browser():
+def pw():
     from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(channel="chrome", headless=True, args=CHROME_ARGS)
-        yield browser
-        browser.close()
+    with sync_playwright() as p:  # one Playwright session per module: two cannot run in the same thread
+        yield p
+
+
+@pytest.fixture(scope="module")
+def playwright_browser(pw):
+    browser = pw.chromium.launch(channel="chrome", headless=True, args=CHROME_ARGS)
+    yield browser
+    browser.close()
 
 
 @pytest.fixture
@@ -64,6 +69,21 @@ def hosted_url():
     srv = serve_in_thread(functools.partial(Quiet, directory=str(VIEWER)))
     yield f"http://127.0.0.1:{srv.server_address[1]}/index.html"
     srv.shutdown()
+
+
+@pytest.fixture(scope="module")
+def gpu_browser(pw):
+    """Real Chrome with WebGPU (no software-graphics flags): depth runs on the GPU at ~0.35 s per frame instead of ~6 s on the CPU."""
+    browser = pw.chromium.launch(channel="chrome", headless=True, args=["--enable-unsafe-webgpu"])
+    yield browser
+    browser.close()
+
+
+@pytest.fixture
+def gpu_desktop(gpu_browser):
+    p = Page(gpu_browser, viewport={"width": 1440, "height": 900})
+    yield p
+    p.close()
 
 
 @pytest.fixture(scope="session")
@@ -173,10 +193,10 @@ def test_hosted_start_screen_is_honest_about_what_it_can_do(desktop, hosted_url)
     pg.goto(hosted_url)
     until(pg, "document.documentElement.dataset.mode === 'hosted'")
     note = pg.inner_text("#mode-note")
-    assert "Nothing leaves it until you say so" in note and "not in the browser yet" in note  # honest about the limit
+    assert "Nothing leaves it until you say so" in note and "run on your device" in note
     assert pg.is_visible("#sample-btn") and pg.is_visible("#drop")
     pg.click("#advanced summary")
-    assert pg.is_visible("#opt-server") and not pg.is_visible("#opt-camera")  # only options that do something here
+    assert pg.is_visible("#opt-server") and pg.is_visible("#opt-camera")  # server address plus the scale options
     assert "GitHub.com/Srijjit-V/video-to-3d".lower() in pg.get_attribute("a.link", "href").lower()
     shot(pg, "desktop-landing")
     assert desktop.errors == []
@@ -261,7 +281,7 @@ def test_hosted_explains_a_video_this_browser_cannot_read(desktop, hosted_url, t
     assert "couldn't read that video" in desktop.page.inner_text("#prog-error-msg")
 
 
-def test_hosted_hybrid_picks_frames_asks_consent_then_gets_the_camera_path(desktop, hosted_url, h264_video, tmp_path):
+def test_hosted_hybrid_picks_frames_asks_consent_then_gets_the_camera_path(gpu_desktop, hosted_url, h264_video, tmp_path):
     """The real synthetic video, the real browser, a real camera-solve server running real COLMAP."""
     from urllib.parse import urlparse
 
@@ -271,11 +291,15 @@ def test_hosted_hybrid_picks_frames_asks_consent_then_gets_the_camera_path(deskt
     srv = make_server("127.0.0.1", 0, runner=default_runner, allowed_origins={origin}, limits=Limits(min_interval_s=0.0), tmp_root=tmp_path)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     seen = []
-    pg = desktop.page
+    pg = gpu_desktop.page
     pg.on("request", lambda r: seen.append((r.method, r.url, r.post_data_buffer and len(r.post_data_buffer))))
     pg.goto(hosted_url)
+    if not pg.evaluate("async () => !!(navigator.gpu && await navigator.gpu.requestAdapter())"):  # WebGPU needs a secure context: localhost is one
+        srv.shutdown()
+        pytest.skip("needs a browser with WebGPU (the CPU path takes about 8 minutes for this video)")
     pg.click("#advanced summary")
     pg.fill("#opt-server", f"http://127.0.0.1:{srv.server_address[1]}")
+    pg.fill("#opt-camera", "1.5")  # the true camera height of the synthetic room
     pg.set_input_files("#file", str(h264_video))
     # stage 1 runs on the device; nothing has been sent yet when the consent screen appears
     pg.wait_for_selector("#consent", state="visible", timeout=240000)
@@ -286,18 +310,28 @@ def test_hosted_hybrid_picks_frames_asks_consent_then_gets_the_camera_path(deskt
     assert "Your video stays on this device" in pg.inner_text("#consent")
     shot(pg, "desktop-consent")
     pg.click("#consent-send")
-    pg.wait_for_selector("#hybrid-result", state="visible", timeout=300000)
-    assert "frames placed" in pg.inner_text("#prog-summary")
-    msg = pg.inner_text("#hybrid-result-msg")
-    assert "not in the browser yet" in msg
-    assert pg.locator("#path-plot polyline").count() == 1
+    # stage 2 on the server, then depth + measuring on this device; fail fast on an error instead of waiting out the timeout
+    for _ in range(1500):
+        if pg.is_visible("#scene") or pg.is_visible("#prog-error"):
+            break
+        pg.wait_for_timeout(500)
+    assert not pg.is_visible("#prog-error"), pg.inner_text("#prog-error-msg")
+    assert pg.is_visible("#scene")
+    until(pg, "window.__vid3d && window.__vid3d.meta", 20000)
+    room = pg.evaluate("window.__vid3d.meta.room")
+    sides = sorted([room["length_m"], room["width_m"]])
+    # 5 measured runs: long side +2, +3, +2, +3 and +7 %, short side +1 to +5 %. The camera solver differs from run to run, so the gate is 8 %.
+    assert abs(sides[0] - 4.0) <= 0.32 and abs(sides[1] - 5.0) <= 0.40, f"room {sides} is not within 8% of 4.0 x 5.0 m"
+    rg = pg.evaluate("window.__vid3d.meta.uncertainty.ranges.area_m2")
+    assert rg[0] <= 20.0 and (rg[1] is None or rg[1] >= 20.0), f"area range {rg} should contain the true 20 m2"
+    assert pg.evaluate("window.__vid3d.meta.video") == h264_video.name  # a file name only, never a path
+    assert pg.evaluate("window.__vid3d.meta.scale_method").startswith("camera height given")
     posts = [r for r in seen if r[0] == "POST"]
     assert len(posts) == 1 and "/v1/sfm" in posts[0][1]
     assert posts[0][2] < 40_000_000 and posts[0][2] < h264_video.stat().st_size * 20  # pictures, not the video
-    assert [li.get_attribute("data-status") for li in pg.locator("#stage-list li").all()][:2] == ["done", "done"]
-    shot(pg, "desktop-hybrid-result")
+    shot(pg, "desktop-hybrid-scene")
     srv.shutdown()
-    assert desktop.errors == [], desktop.errors
+    assert gpu_desktop.errors == [], gpu_desktop.errors
 
 
 def test_hosted_hybrid_says_so_when_the_server_is_not_there(desktop, hosted_url, h264_video):
