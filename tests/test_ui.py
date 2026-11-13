@@ -371,8 +371,14 @@ def test_keyboard_reaches_everything_and_shortcuts_work(desktop, hosted_url):
     pg.keyboard.press("Enter")
     # the drop zone opens with the keyboard too
     pg.focus("#drop")
-    with pg.expect_file_chooser():
-        pg.keyboard.press("Enter")
+    try:
+        with pg.expect_file_chooser(timeout=10000):
+            pg.keyboard.press("Enter")
+    except Exception as e:  # report what the page was doing: on CI this is the only evidence available
+        state = pg.evaluate("({active: document.activeElement && (document.activeElement.id || document.activeElement.tagName), "
+                            "mode: document.documentElement.dataset.mode, accept: document.getElementById('file').accept, "
+                            "hidden: document.getElementById('start').hidden})")
+        raise AssertionError(f"no file chooser after Enter on #drop: {state}; page errors: {desktop.errors}; {str(e)[:120]}") from e
     open_sample(desktop, hosted_url)
     for key, btn in (("m", "#tool-measure"), ("p", "#tool-pick")):
         pg.keyboard.press(key)
