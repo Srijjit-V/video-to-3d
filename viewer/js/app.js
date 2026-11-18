@@ -34,12 +34,12 @@ function setupMode() {
   const file = $("file");
   file.multiple = true;
   if (mode === "local") {
-    file.accept = "video/*,.mp4,.mov,.m4v,.webm,.avi,.mkv,.ply,.json,.png";
+    file.accept = ".mp4,.mov,.m4v,.webm,.avi,.mkv,.ply,.json,.png";
     $("drop-title").textContent = "Drop a video here";
     $("drop-sub").textContent = "or choose a file · 10 to 30 seconds of slow walking works best";
     $("mode-note").textContent = "Everything stays on this computer. Processing takes about three minutes.";
   } else {
-    file.accept = "video/*,.mp4,.mov,.m4v,.webm,.ply,.json,.png";
+    file.accept = ".mp4,.mov,.m4v,.webm,.ply,.json,.png";
     $("server-field").hidden = false;
     try { $("opt-server").value = localStorage.getItem("vid3d-server") || ""; } catch { /* storage blocked */ }
     $("drop-title").textContent = "Drop a video here";

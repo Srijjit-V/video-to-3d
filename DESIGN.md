@@ -1,8 +1,12 @@
 # Design language
 
-Source: the "Break Room Club" system in [Intern-break](https://github.com/Srijjit-V/Intern-break)
-(`tailwind.config.js`, `src/styles/globals.css`). This viewer uses its **dark stage** because a point cloud
-reads best on charcoal. Tokens live in `viewer/css/styles.css`; a test checks their contrast.
+Source: the "Break Room Club" system in [Intern-break](https://github.com/Srijjit-V/Intern-break) (public, MIT), read on 2026-11-18 at commit `b944af5`:
+`tailwind.config.js`, `src/styles/globals.css`, `src/components/Logo.tsx`, `src/components/ui/*`, `src/lib/use-theme.ts`, `docs/screenshots/arcade.png`.
+Tokens live in `viewer/css/styles.css`; `tests/test_design_contrast.py` checks their contrast in both themes.
+
+**What was checked against the source.** The dark theme values, type (Outfit + Plus Jakarta Sans), radius (1.25 rem cards, pill buttons), easing curves and the 480 ms / 180 ms timings in this file match Intern Break's `html.dark` tokens. The light theme was missing and is now added.
+**Adopted:** colour tokens (dark and light), type, radius, shadows, motion, eyebrow labels, pill buttons, soft drifting orbs, a sun/moon theme toggle.
+**Not adopted:** Tailwind, React and the shadcn-style `ui/*` components (the viewer is a no-build static site, see [ADR-0005](docs/adr/0005-front-end-stack.md)), the dark icon rail (the viewer has one screen with a toolbar), and Intern Break's game-specific art.
 
 ## Type
 - **Outfit** (500–800) for headings, tight tracking (`-0.03em`). **Plus Jakarta Sans** (400–700) for UI text.
@@ -46,3 +50,20 @@ Primary buttons use dark text (`#07090d`) on mint. Colour is never the only sign
 - Keyboard: `M` measure, `P` pick colour, `T` top-down, `R` reset view, `Esc` cancel. A skip link jumps to the viewer.
 - Progress and errors are announced with `aria-live="polite"`.
 - Pointer-only gestures (drag to orbit, click to measure) have the buttons and keys above as alternatives.
+
+## Themes
+- **Dark** is the default and the stage the 3D scene is designed for (`--scene-bg` `#0c0e12`). It does not follow the system setting, because a point cloud reads best on charcoal.
+- **Light** is an explicit choice from the sun/moon button in the header, remembered in `localStorage` when it is available. It follows Intern Break's light canvas: `#f4f6fa` page, white cards, `#dde3ec` hairlines, ink `#0e1118`. The 3D canvas becomes `#e9edf4`.
+- A tiny classic script (`js/theme.js`) sets the theme before first paint so there is no flash; a module would run too late.
+- Every colour in a rule comes from a token (a test fails on a raw colour outside the token blocks; the 3D label pill is the one fixed exception), so a theme can change all of them.
+
+### Light tokens, and where they deliberately differ from Intern Break
+Intern Break's own light values fail WCAG 4.5:1 for small text on white, so darker equivalents are used:
+
+| Token | Intern Break light | Contrast on white | Used here | Contrast on white |
+|---|---|---|---|---|
+| muted text | `#8791a3` | 3.2:1 | `#5f6a7e` (`--text-3`) | 5.5:1 |
+| secondary text | `#5a6478` | 6.0:1 | `#4f596c` (`--text-2`) | 7.1:1 |
+| mint (links, ring, primary button) | `#0f9f8a` | 3.3:1 | `#0a7466` (`--mint`, white label on it 5.7:1) | 5.7:1 |
+| red (measurements, errors) | `#ef4464` | 3.7:1 | `#c0183f` (`--hot`) | 6.1:1 |
+| amber (warnings) | `#fbbf24` | 1.7:1 | `#855500` (`--amber`) | 6.4:1 |

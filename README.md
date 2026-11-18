@@ -113,8 +113,8 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 | Untrusted input | duration, resolution and frame-count limits before and during decode; 2 GB upload cap, extension allow-list, server-made file names |
 | Local server | `127.0.0.1` only, Host allow-list (DNS rebinding), Origin check, one job at a time, socket timeout, job pruning, traversal tests, CSP |
 | Supply chain | model pinned to a commit and loaded as safetensors; three.js bundled with a SHA-384 integrity hash checked against the npm package; hash-pinned lockfile; `pip-audit` in CI |
-| Quality gates | ruff (with security rules), mypy, 159 Python tests, 53 Node tests (golden + analytic-room + viewer logic), 16 real-browser tests, GitHub Actions on every push |
-| Accessible UI | keyboard-complete, screen-reader labels, tested contrast (23 checks), phone layout verified, strict CSP with no inline script |
+| Quality gates | ruff (with security rules), mypy, 185 Python tests, 53 Node tests (golden + analytic-room + viewer logic), 16 real-browser tests, GitHub Actions on every push |
+| Accessible UI | keyboard-complete, screen-reader labels, contrast tested in a dark and a light theme (48 checks), phone layout verified, strict CSP with no inline script |
 
 ## Explore the code
 
@@ -123,7 +123,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 - [`src/vid3d/uncertainty.py`](src/vid3d/uncertainty.py): ranges and confidence
 - [`src/vid3d/server.py`](src/vid3d/server.py): the local server and its checks
 - [`viewer/`](viewer/): the static viewer; [`DESIGN.md`](DESIGN.md) is its design language
-- [`docs/`](docs/): [AUDIT](docs/AUDIT.md) · [MATH](docs/MATH.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [SECURITY](docs/SECURITY.md) · [VERIFICATION](docs/VERIFICATION.md) · [BENCHMARK](docs/BENCHMARK.md) · [RESEARCH](docs/RESEARCH.md)
+- [`docs/`](docs/README.md) (document roles): [ADRs](docs/adr/README.md) · [STATUS](docs/STATUS.md) · [AUDIT](docs/AUDIT.md) · [MATH](docs/MATH.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [SECURITY](docs/SECURITY.md) · [VERIFICATION](docs/VERIFICATION.md) · [BENCHMARK](docs/BENCHMARK.md) · [RESEARCH](docs/RESEARCH.md)
 
 ## Local API (`vid3d serve`)
 
@@ -139,7 +139,7 @@ More diagrams (data flow, upload sequence with progress events, trust boundaries
 
 Measured on 2026-11-10 (details in [docs/VERIFICATION.md](docs/VERIFICATION.md)):
 
-- **159** Python tests pass (20 opt-in skipped); **53** Node tests; **16** browser tests; ruff, mypy and `pip-audit` clean.
+- **185** Python tests pass (20 opt-in skipped); **53** Node tests; **17** browser tests; ruff, mypy and `pip-audit` clean.
 - Synthetic 5.0 x 4.0 m room: with the true camera height, 4.05 x 5.00 m (+1.3%, 0%) and the area range 18.1 to 22.2 m² contained the true 20 m²;
   with the default 1.45 m assumed, 3.90 x 4.85 m (-2.5%, -3.0%) and the range 13.9 to 24.4 m² contained it too.
 - One run per setting; the camera solver varies by a few percent between runs.
@@ -158,7 +158,7 @@ The server needs pycolmap, numpy and headless OpenCV only (no torch). It re-enco
 ```
 
 **Browser flow (built and tested in Chrome on this computer):** drop a video on the page, open *Advanced options* and enter the server address (default `http://127.0.0.1:8787`; start the server with `--origin` set to the page's address). The page then picks frames, shows a consent screen, sends the pictures, runs AI depth and the measuring on your device (about 2.5 minutes in total for the 6-second synthetic room with a WebGPU laptop, most of it the server's COLMAP), and opens the 3D scene with ranges, confidence and floor-plan export.
-Over 5 runs on the synthetic 4.0 x 5.0 m room (true camera height given) the browser path measured the long side 2 to 3% high in four runs and 7% high in one, and the short side 1 to 5% high; the 90% area range contained the true 20 m² in the run that was checked against it. The camera solver varies from run to run.
+Over 6 runs on the synthetic 4.0 x 5.0 m room (true camera height given) the browser path measured the long side 2 to 3% high in four runs, 7% high in one and 11% high in one, and the short side 1 to 5% high. The camera solver varies from run to run, and the 90% range does not model that variation, so in the worst runs the true area can fall outside it.
 **Not yet built or tested:** the Docker image in `deploy/`, any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, resume after a dropped connection, Safari and phone browsers, real phone video, and a fallback that solves the camera path in the browser (colmap-wasm worked with sequential pairing in the spike but is not wired in). Do not expose the server publicly before those exist.
 
 ## Deploy the viewer

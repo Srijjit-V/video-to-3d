@@ -134,6 +134,19 @@ In the browser the same seam is used: the page does stages 1, 3, 4, 5 and 6 on t
 
 The payload format is documented in `src/vid3d/sfm_payload.py` and validated on both sides. Local mode (`vid3d process`) writes the same data to `work/sfm.npz`; any solver that produces the payload (the server, colmap-wasm) plugs in at the same point.
 
+## Find X
+
+| Need | Go to | Verify with |
+|---|---|---|
+| Change how camera poses are handed over | `src/vid3d/sfm_payload.py`, `ts/src/pipeline.ts` (`validatePayload`) | `tests/test_sfm_payload.py`, `tests/js/pipeline.test.mjs` |
+| Change the camera-solve server or its limits | `src/vid3d/sfm_server.py` | `tests/test_sfm_server.py` |
+| Change room measuring (Python reference) | `src/vid3d/floorplan.py`, `geometry.py`, `uncertainty.py` | `tests/test_floorplan.py`, `test_geometry.py`, `test_uncertainty.py` |
+| Change room measuring in the browser | `ts/src/*.ts` then `npm run build` (output `viewer/js/core`, committed) | `tests/js/golden.test.mjs`; re-run `scripts/make_golden.py` if Python changed |
+| Change browser depth or the AI runtime loading | `viewer/js/depth.js`, `viewer/vendor/transformers/` | `fetchVerified` tests in `tests/js/viewer.test.mjs`; `scripts/verify_vendor.py --official` |
+| Change the upload flow, consent, stages | `viewer/js/app.js`, `viewer/js/hybrid.js` | `tests/test_ui.py` (`VID3D_UI=1`) |
+| Change colours, themes | `viewer/css/styles.css`, `viewer/js/theme.js`, `DESIGN.md` | `tests/test_design_contrast.py` |
+| Change the security headers | `vercel.json` | `tests/test_ui.py` (runs under these headers) |
+
 ## Modules
 
 | Module | Job |

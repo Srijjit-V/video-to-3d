@@ -41,6 +41,9 @@ export class SceneView {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0c0e12);
+    const paintBackground = () => { const c = getComputedStyle(document.documentElement).getPropertyValue("--scene-bg").trim(); if (c) this.scene.background = new THREE.Color(c); };
+    paintBackground();
+    document.addEventListener("themechange", paintBackground);
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.01, 500);
     this.controls = new OrbitControls(this.camera, el);
     this.controls.enableDamping = true;
