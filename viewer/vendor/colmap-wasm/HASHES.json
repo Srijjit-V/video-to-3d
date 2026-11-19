@@ -1,0 +1,12 @@
+{
+  "dist/colmap-files.js": "sha384-xJ8IuBEEY63GyuwO96Sr1FgjGRqM0LMW3rYha89AAaKpv2wgmm/om/dvav/7pS7r",
+  "dist/estimate.js": "sha384-msBbaHjxtUnKGzM6FVYxSpr6qcJ4ZAYX9hfSoQ3GfzMmRZQiE2/wUoLUX4rulZnk",
+  "dist/index.js": "sha384-o6q334pfy2Xt4WAM10H0tH3Tu4BUWwLfDr8X/5u/Zw4VmrLZBacVSLNSv4cqnyQB",
+  "dist/pairs.js": "sha384-NfpybNTJwC9ehZEsOyaiHZdwXa9/qND6hx/4CjWatXfwRC/ebxuwHKmDG2FQ/MMe",
+  "dist/protocol.js": "sha384-Q5O+EnIz8JnDEUxgLKjm05HKZZkuusUu8lT1+jwZg6a9GW6wBuk8ajxZZVdamB0G",
+  "dist/sift-matcher.js": "sha384-m5W0tihe/a0LNcT7N2lidLuqhAnjGS4SZioUJEVKzMSzu1jWONvI5UZdhhUDcCIS",
+  "dist/types.js": "sha384-zFD94T9irNxb0oN0fJw6Wsy91FidLHGem4Sxa965+fZgjXtd2NVjV6V9nuKWFtZ0",
+  "dist/worker.js": "sha384-LhgH/ESqZ1lQZwLpVMjwZrQ9hHrsmQZ330cOxUe/Y/Z/xzWUbLsbWjdSeq7jYgft",
+  "wasm/colmap.mjs": "sha384-JykQKWif56Gxb1HsQV9jmVphBqB7K1clFNT0ieE2GWjKDmhGNUrvGYf8aTeJFqH7",
+  "wasm/colmap.wasm": "sha384-DD1sbV1oE1ILpe8xm6JD5MeHBrEk59KBEpXzCluQvwEC2KKiPG8lCQWn1jyzs5rU"
+}

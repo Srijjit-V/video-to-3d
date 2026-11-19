@@ -6,8 +6,8 @@ Updated 2026-11-18. Verified numbers live in [VERIFICATION.md](VERIFICATION.md);
 | Area | State |
 |---|---|
 | Python pipeline, CLI, local server | working; 199 tests pass |
-| Browser measuring (TypeScript port, browser depth) | working end to end in Chrome with a camera-solve server; 53 Node tests, golden vectors match Python |
-| Viewer (demo, colours, export, themes) | working; 17 browser tests, 48 contrast checks across both themes |
+| Browser measuring (TypeScript port, browser depth) | working end to end in Chrome with a camera-solve server; 56 Node tests, golden vectors match Python |
+| Viewer (demo, colours, export, themes) | working; 19 browser tests, 48 contrast checks across both themes |
 | CI | green on the last code commit (see VERIFICATION.md for the one unexplained earlier failure) |
 | Accuracy | measured only on a synthetic room (browser path: 2 to 3% high on average, one run 7% high); **real phone video has not been tested** |
 
@@ -18,7 +18,7 @@ Updated 2026-11-18. Verified numbers live in [VERIFICATION.md](VERIFICATION.md);
 - **Real-phone benchmark**: needs footage and tape-measured rooms ([BENCHMARK.md](BENCHMARK.md)).
 
 ## Not built
-colmap-wasm mode in the page, Safari and phone-browser tests, HEVC video test, resume after a dropped connection, Mediabunny/WebCodecs decoding (frames come from a `<video>` element on the main thread).
+Safari and phone-browser tests of the upload flow (only the page and demo were run in WebKit), HEVC video test, resume after a dropped connection, Mediabunny/WebCodecs decoding (frames come from a `<video>` element on the main thread).
 
 ## Open audit rows
 See [retro/hybrid-path/gap-register.md](retro/hybrid-path/gap-register.md): G-009 proxy-aware rate limit, G-010 bot protection / spend cap / queue, G-011 frame picking off the main thread; G-013 (range vs solver variance) is wont-fix until real-room data exists.

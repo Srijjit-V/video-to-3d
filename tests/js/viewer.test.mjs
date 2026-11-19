@@ -280,3 +280,70 @@ test("pickDevice uses WebGPU only when the adapter supports 16-bit float shaders
   assert.equal(await pickDevice({}), "wasm");              // no navigator.gpu
   assert.equal(await pickDevice({ gpu: { requestAdapter: async () => { throw new Error("boom"); } } }), "wasm");
 });
+
+// ---------- capability detection and the in-browser camera solve ----------
+test("detectCapabilities and describeModes pick modes from what the browser really has", async () => {
+  const { detectCapabilities, describeModes } = await import("../../viewer/js/capabilities.js");
+  const gpu = (features) => ({ requestAdapter: async () => (features ? { features: new Set(features) } : null) });
+  const win = { Worker: function () {}, WebAssembly: {}, VideoDecoder: function () {} };
+
+  const strong = await detectCapabilities({ gpu: gpu(["shader-f16"]), deviceMemory: 8, hardwareConcurrency: 8 }, win);
+  assert.deepEqual([strong.webgpu, strong.shaderF16, strong.webcodecs, strong.memoryGB], [true, true, true, 8]);
+  let m = describeModes(strong);
+  assert.equal(m.depthDevice, "webgpu");
+  assert.equal(m.default, "hybrid");           // the server path stays the default
+  assert.equal(m.modes.browser.available, true);
+
+  const soft = describeModes(await detectCapabilities({ gpu: gpu([]), deviceMemory: 8 }, win));
+  assert.equal(soft.depthDevice, "wasm");      // adapter without shader-f16: depth falls back to the CPU
+  assert.equal(soft.modes.browser.available, true);
+
+  const none = describeModes(await detectCapabilities({}, { ...win, VideoDecoder: undefined }));
+  assert.equal(none.modes.browser.available, false);
+  assert.match(none.modes.browser.reason, /WebGPU/);
+  assert.equal(none.modes.hybrid.available, true);   // the server path needs no GPU
+
+  const small = describeModes(await detectCapabilities({ gpu: gpu(["shader-f16"]), deviceMemory: 2 }, win));
+  assert.equal(small.modes.browser.available, false);
+  assert.match(small.modes.browser.reason, /memory/i);
+  const unknownMem = describeModes(await detectCapabilities({ gpu: gpu([]) }, win)); // Safari and Firefox do not report memory
+  assert.equal(unknownMem.modes.browser.available, true);
+  const broken = await detectCapabilities({ gpu: { requestAdapter: async () => { throw new Error("no"); } } }, win);
+  assert.equal(broken.webgpu, false);
+});
+
+test("reconstructionToPayload turns COLMAP's poses and tracks into the sfm payload", async () => {
+  const { reconstructionToPayload } = await import("../../viewer/js/colmap.js");
+  const { validatePayload } = await import("../../viewer/js/core/pipeline.js");
+  const rec = {
+    camera: { model: "SIMPLE_PINHOLE", width: 640, height: 480, focal: 457.1, cx: 320, cy: 240 },
+    images: [
+      { name: "frame_0000.jpg", registered: true, R: Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]), t: [0, 0, 0] },
+      { name: "frame_0001.jpg", registered: false, R: null, t: null },
+      { name: "frame_0002.jpg", registered: true, R: Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]), t: [0.5, 0, 1] },
+    ],
+    points: [
+      { xyz: [1, 2, 3], track: [[0, 0], [2, 1]] },     // depth 3 in frame 0, depth 4 in frame 2 (t_z = 1)
+      { xyz: [0, 0, -2], track: [[0, 1]] },            // behind frame 0's camera: dropped
+      { xyz: [0, 0, 2], track: [[1, 0]] },             // seen only by an unregistered image: ignored
+    ],
+  };
+  const kp = (rows) => ({ keypoints: Float32Array.from(rows.flat()) });
+  const features = [kp([[100.5, 200.5, 1, 0, 0, 1], [10.5, 20.5, 1, 0, 0, 1]]), kp([[1, 1, 1, 0, 0, 1]]), kp([[5, 6, 1, 0, 0, 1], [300.5, 100.5, 1, 0, 0, 1]])];
+  const p = reconstructionToPayload(rec, features, 3);
+  assert.equal(p.version, 1);
+  assert.deepEqual(p.camera, { width: 640, height: 480, focal: 457.1, cx: 320, cy: 240, k1: 0 });
+  assert.equal(p.frames_total, 3);
+  assert.deepEqual(p.frames.map((f) => f.name), ["frame_0000.jpg", "frame_0002.jpg"]);   // unregistered image left out
+  assert.deepEqual(p.frames[0].obs, [[100.5, 200.5, 3]]);                                  // z = R X + t, behind-camera point dropped
+  assert.deepEqual(p.frames[1].obs, [[300.5, 100.5, 4]]);
+  assert.deepEqual(p.frames[0].R, [1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  validatePayload(p);                                                                       // it passes the same validator as a server payload
+});
+
+test("reconstructionToPayload refuses a solve that placed too few frames, in plain words", async () => {
+  const { reconstructionToPayload } = await import("../../viewer/js/colmap.js");
+  const imgs = Array.from({ length: 10 }, (_, i) => ({ name: `frame_${String(i).padStart(4, "0")}.jpg`, registered: i < 3, R: i < 3 ? Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]) : null, t: i < 3 ? [0, 0, 0] : null }));
+  const rec = { camera: { width: 64, height: 48, focal: 50, cx: 32, cy: 24 }, images: imgs, points: [] };
+  assert.throws(() => reconstructionToPayload(rec, imgs.map(() => ({ keypoints: new Float32Array(0) })), 10), /only placed 3 of 10/i);
+});

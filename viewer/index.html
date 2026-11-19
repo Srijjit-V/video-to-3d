@@ -55,6 +55,12 @@
       <details id="advanced" class="advanced">
         <summary>Advanced options</summary>
         <div class="fields">
+          <label for="opt-solve" id="solve-field" hidden>Camera path
+            <select id="opt-solve">
+              <option value="hybrid" selected>On a server (recommended)</option>
+              <option value="browser">In this browser (experimental)</option>
+            </select>
+            <span class="hint" id="solve-note">The camera path is the one step that needs COLMAP. On a server, only small pictures are sent, after you agree. In this browser, nothing is sent at all, but it is slower and has been tested on one room only.</span></label>
           <label for="opt-server" id="server-field" hidden>Camera-solve server
             <input id="opt-server" type="url" inputmode="url" placeholder="http://127.0.0.1:8787" autocomplete="off" spellcheck="false">
             <span class="hint">Where the pictures are sent to find the camera path. Run <code>python -m vid3d.sfm_server</code>, or use your own.</span></label>

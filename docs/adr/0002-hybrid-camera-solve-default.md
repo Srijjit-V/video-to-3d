@@ -1,7 +1,7 @@
 # ADR-0002: Hybrid mode (server solves the camera path) is the default; colmap-wasm stays experimental
 
 **Date**: 2026-11-11
-**Status**: accepted (backfilled from the Phase 0 spike)
+**Status**: accepted (backfilled from the Phase 0 spike; updated 2026-11-19: the experimental mode is now wired in)
 **Deciders**: Srijjit (owner), Claude Code (implementation)
 
 ## Context
@@ -10,7 +10,7 @@ The Phase 0 spike (docs/VERIFICATION.md) ran colmap-wasm 0.1.0 in Chrome on the 
 
 ## Decision
 
-The default mode sends about 80 resized JPEGs (never the video) to a CPU server running pycolmap and returns the payload. The server has no torch. colmap-wasm is kept as an experimental mode, not wired in, until it passes the 6% gate on more rooms.
+The default mode sends about 80 resized JPEGs (never the video) to a CPU server running pycolmap and returns the payload. The server has no torch. colmap-wasm is an experimental mode behind an "In this browser (experimental)" option (wired in on 2026-11-19, offered only when capability detection says the browser can run it) and is not the default until it passes the 6% gate on more rooms. On the one synthetic room it measured -1% / 0%.
 
 ## Alternatives Considered
 

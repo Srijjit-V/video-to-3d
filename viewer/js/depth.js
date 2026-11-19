@@ -45,8 +45,9 @@ export async function loadDepth({ onStatus = () => {}, device } = {}) {
   onStatus("loading the AI library (checking its hash)");
   const lib = await fetchVerified(TRANSFORMERS_URL, hashes["transformers.min.js"]);
   const libUrl = URL.createObjectURL(new Blob([lib], { type: "text/javascript" }));
-  let mod;
-  try { mod = await import(libUrl); } finally { URL.revokeObjectURL(libUrl); }
+  // Not revoked: the library may fetch its own URL later (loaders, workers), and a revoked blob URL makes that request fail.
+  // It is about 590 KB and lives only as long as the page.
+  const mod = await import(libUrl);
   const { pipeline, env, RawImage } = mod;
   env.allowLocalModels = false;
   env.useBrowserCache = true;

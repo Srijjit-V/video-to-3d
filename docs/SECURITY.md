@@ -27,6 +27,8 @@ home and can carry their location, so privacy is part of the threat model.
 
 A hosted camera-solve server must be added to `connect-src` before the deployed page can use it. The consent screen shows exactly what is sent and to which host before anything leaves the device.
 
+**colmap-wasm (experimental in-browser camera solve).** A third-party WebAssembly build of COLMAP (BSD-3, 7 MB) is bundled in `viewer/vendor/colmap-wasm` because its worker must be same-origin. The files are unmodified and hash-checked against the npm package in CI; the wasm binary itself is not auditable by reading. It runs in a worker, needs `'wasm-unsafe-eval'` (already allowed) and `worker-src 'self'`, makes no network requests of its own, and receives only the pictures the user picked. This mode sends nothing off the device.
+
 ## Hybrid camera-solve server (`vid3d.sfm_server`)
 
 Separate from `vid3d serve`. It receives frames, so it is a boundary of its own: body cap checked from `Content-Length` before reading (a missing, zero or negative length is refused), the JPEG header's size read and checked before any frame is decoded, at most 120 frames and 1280 px each, all the same size, every frame decoded and **re-encoded** (this drops EXIF and GPS), server-made file names, Origin allow-list for browsers, one job at a time, a per-client minimum interval, a 900 s solver timeout, a temp folder deleted in every case, no request logging, no stack traces to clients. The payload it returns is validated again by whoever receives it, and the client reads at most 5 MB of any answer. Unexpected errors are logged by type only. **Not yet in place:** bot protection, a spend cap, TLS (put it behind a proxy that terminates TLS), and a hardened container image build.

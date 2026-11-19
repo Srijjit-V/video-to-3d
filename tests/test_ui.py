@@ -398,6 +398,49 @@ def test_keyboard_reaches_everything_and_shortcuts_work(desktop, hosted_url):
     assert pg.get_attribute("#tool-measure", "aria-pressed") == "false"
 
 
+def test_hosted_browser_mode_is_offered_only_when_the_browser_can_run_it(desktop, hosted_url):
+    pg = desktop.page
+    pg.add_init_script("Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });")  # a browser without WebGPU
+    pg.goto(hosted_url)
+    until(pg, "window.__vid3d && window.__vid3d.caps", 10000)
+    pg.click("#advanced summary")
+    assert pg.evaluate("document.querySelector('#opt-solve option[value=browser]').disabled") is True  # Playwright's is_disabled() ignores <option>
+    assert "WebGPU" in pg.inner_text("#solve-note") and "server" in pg.inner_text("#solve-note").lower()
+    assert pg.evaluate("window.__vid3d.caps.modes.hybrid.available") is True  # the server path needs no GPU
+    assert pg.input_value("#opt-solve") == "hybrid"
+
+
+def test_hosted_browser_mode_solves_the_camera_path_on_the_device_and_sends_nothing(gpu_desktop, hosted_url, h264_video):
+    """Experimental mode: colmap-wasm in the page, no server, no consent screen, no request carrying the pictures."""
+    pg = gpu_desktop.page
+    sent = []
+    pg.on("request", lambda r: sent.append((r.method, r.url, r.post_data_buffer and len(r.post_data_buffer))) if r.method == "POST" else None)
+    pg.goto(hosted_url)
+    if not pg.evaluate("async () => { const a = navigator.gpu && await navigator.gpu.requestAdapter(); return !!(a && a.features.has('shader-f16')); }"):
+        pytest.skip("needs a browser with a real WebGPU adapter that supports shader-f16")
+    until(pg, "window.__vid3d && window.__vid3d.caps", 10000)
+    pg.click("#advanced summary")
+    pg.select_option("#opt-solve", "browser")
+    assert not pg.is_visible("#opt-server")  # no server address is needed
+    pg.fill("#opt-camera", "1.5")
+    pg.set_input_files("#file", str(h264_video))
+    for _ in range(1500):
+        if pg.is_visible("#scene") or pg.is_visible("#prog-error") or pg.is_visible("#consent"):
+            break
+        pg.wait_for_timeout(500)
+    assert not pg.is_visible("#consent"), "nothing leaves the device, so there is nothing to consent to"
+    assert not pg.is_visible("#prog-error"), pg.inner_text("#prog-error-msg")
+    assert pg.is_visible("#scene")
+    until(pg, "window.__vid3d && window.__vid3d.meta", 20000)
+    room = pg.evaluate("window.__vid3d.meta.room")
+    sides = sorted([room["length_m"], room["width_m"]])
+    # same gate as the server path: the solver differs from run to run (docs/VERIFICATION.md)
+    assert abs(sides[0] - 4.0) <= 0.48 and abs(sides[1] - 5.0) <= 0.60, f"room {sides} is not within 12% of 4.0 x 5.0 m"
+    assert sent == [], f"something was POSTed: {sent}"
+    assert pg.evaluate("window.__vid3d.meta.video") == h264_video.name
+    assert gpu_desktop.errors == [], gpu_desktop.errors
+
+
 def test_theme_toggle_is_dark_by_default_switches_remembers_and_recolours_the_3d_scene(desktop, hosted_url):
     pg = desktop.page
     pg.goto(hosted_url)

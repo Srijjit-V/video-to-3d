@@ -102,6 +102,19 @@ The Modal limits and prices below are from search results, not from reading Moda
 - **Browser suite and machine load**: in one full run (machine load average about 40 because of Docker Desktop and other apps) three hybrid tests timed out waiting for frame picking; run on their own the same three passed (4 min 32 s, including the end-to-end test under the new `Permissions-Policy`), so the browser count is 17 passed, 1 skipped. The hybrid tests are slow and load-sensitive.
 - **CI** is green on the latest commit for all four jobs (checked through the Actions API). Actions are pinned to commit SHAs.
 
+## In-browser camera solve (experimental) and capability detection (2026-11-19)
+
+- **Mode**: "Camera path: In this browser (experimental)" in the Advanced options runs colmap-wasm 0.1.0 (bundled in `viewer/vendor/colmap-wasm`, hashes checked against the npm package) on the already-picked frames with sequential pairing, converts its poses to the same sfm payload, and continues exactly like the server path. No consent screen, because nothing leaves the device; the test checks that no POST is made.
+- **Capability detection** (`viewer/js/capabilities.js`, unit-tested with fake browsers): WebGPU adapter, `shader-f16` (the q4f16 depth model needs it, otherwise depth falls back to the CPU), WebCodecs, workers, WebAssembly, device memory. The option is disabled with a plain reason when WebGPU is missing or reported memory is under 4 GB; Safari and Firefox do not report memory, so it is treated as unknown. The server path is always offered and stays the default.
+- **Measured** (real Chrome with WebGPU, synthetic room, true camera height given): **4.95 x 4.0 m**, area 19.8 m² (long side -1%, short side 0%), 90% range 17.9 to 22.1 m² (contains the true 20), 75 to 81 s end to end, 0 POST requests. Five runs gave the identical result **because colmap-wasm is seeded and deterministic for the same pictures, so that is one result, not five independent samples**. One room, one video, one machine: this says nothing about other rooms. The server path on the same video measured +2% to +11% on the long side (see above), so the two solvers differ by room and run and no ranking should be read from this.
+- **Gate from Phase 0**: colmap-wasm passed the 6% room-size gate on this one room with sequential pairing and failed it with its default all-pairs matching. It stays **experimental**, not the default, until it has passed on more rooms.
+- **Not verified**: other rooms or phones, Safari, devices without WebGPU (the option is disabled there; the disabled state is tested, the mode itself was not run), memory use on a phone (the wasm is 7 MB, the solver's peak memory was not measured).
+
+## WebKit evidence (2026-11-19)
+
+`scripts/spike/webkit_probe.py` runs the site under the real security headers in Playwright's WebKit 27.2, desktop and an iPhone 15 profile (this is **not Safari**: no Apple system codecs, no real device). Both profiles: the page loads, the mode is detected, the capabilities probe reports WebGPU, WebCodecs, WebGL2, workers, WebAssembly and `crypto.subtle` all present, the bundled demo scene loads (4.05 x 5.00 m) and renders correctly (screenshot checked), script-set colours match Chrome's computed colours, and the theme toggle works. One difference: WebKit logs a `style-src-attr` CSP violation message for inline styles set from script (canvas, the label layer, palette swatches); the styles are applied and the page works, so it is console noise, not a break.
+**Not tested in WebKit:** the upload flow, frame picking from a video, AI depth, colmap-wasm, real Safari and real iPhones. No Safari or phone support is claimed.
+
 ## Not verified
 
 - **Real phone footage.** Every accuracy number is from the synthetic room. The scale prior (8% when assumed) is a judgement, not a measurement. See [BENCHMARK.md](BENCHMARK.md) for the protocol.

@@ -8,6 +8,8 @@ import { demoSteps, markDone } from "./demo.js";
 import { parseServerUrl, extractFrames, solveOnServer } from "./hybrid.js";
 import { collectPoints, writePly } from "./core/pipeline.js";
 import { loadDepth, makeSource } from "./depth.js";
+import { solveInBrowser } from "./colmap.js";
+import { detectCapabilities, describeModes } from "./capabilities.js";
 import { floorPlanJson, floorPlanSvg } from "./export.js";
 import { confidenceView, esc, fmtLen, fmtRange, mmss, textOn } from "./format.js";
 
@@ -16,7 +18,7 @@ const VIDEO = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
 const MAX_VIDEO = 2 * 1024 ** 3;
 const SCREENS = ["start", "consent", "progress", "scene"];
 
-let mode = "hosted", view = null, meta = null, planUrl = null, calKey = "vid3d-cal", lastLegend = null, job = null, ticker = 0;
+let caps = null, mode = "hosted", view = null, meta = null, planUrl = null, calKey = "vid3d-cal", lastLegend = null, job = null, ticker = 0;
 
 function show(name) {
   for (const s of SCREENS) $(s).hidden = s !== name;
@@ -41,6 +43,13 @@ function setupMode() {
   } else {
     file.accept = ".mp4,.mov,.m4v,.webm,.ply,.json,.png";
     $("server-field").hidden = false;
+    $("solve-field").hidden = false;
+    detectCapabilities().then((c) => {
+      caps = { ...c, ...describeModes(c) };
+      const opt = $("opt-solve").querySelector('option[value="browser"]'), m = caps.modes.browser;
+      if (!m.available) { opt.disabled = true; $("solve-note").textContent = `${m.reason} Use the server option.`; }
+    });
+    $("opt-solve").addEventListener("change", () => { $("server-field").hidden = $("opt-solve").value === "browser"; });
     try { $("opt-server").value = localStorage.getItem("vid3d-server") || ""; } catch { /* storage blocked */ }
     $("drop-title").textContent = "Drop a video here";
     $("drop-sub").textContent = "or choose a file · or drop a cloud.ply and scene.json to view a scan";
@@ -174,16 +183,19 @@ function dropHybrid() {
 }
 
 async function startHybrid(file) {
-  let server;
-  try {
-    server = parseServerUrl($("opt-server").value);
-    try { localStorage.setItem("vid3d-server", $("opt-server").value.trim()); } catch { /* storage blocked */ }
-  } catch (e) { return fail(e.message); }
+  const solveHere = $("opt-solve").value === "browser";
+  let server = null;
+  if (!solveHere) {
+    try {
+      server = parseServerUrl($("opt-server").value);
+      try { localStorage.setItem("vid3d-server", $("opt-server").value.trim()); } catch { /* storage blocked */ }
+    } catch (e) { return fail(e.message); }
+  }
   dropHybrid();
   const abort = new AbortController();
   hy = { abort, frames: [], thumbs: [], fileName: file.name };
   show("progress");
-  buildStages(HYBRID_WHERE);
+  buildStages(solveHere ? HYBRID_WHERE.map((w, i) => (i === 1 ? "on your device (experimental)" : w)) : HYBRID_WHERE);
   $("prog-error").hidden = true;
   $("again-btn").hidden = true;
   $("cancel-btn").hidden = false;
@@ -200,9 +212,27 @@ async function startHybrid(file) {
     setStage(0, "done", `${frames.length} frames, on your device`);
     hy.frames = frames;
     clearInterval(ticker);
+    if (solveHere) return await solveLocally(frames, file.name, abort.signal); // nothing leaves the device: no consent screen is needed
     showConsent(server);
     $("consent-send").onclick = () => sendFrames(server);
   } catch (e) { hybridFailed(e); }
+}
+
+/** Experimental: solve the camera path in this browser (colmap-wasm) instead of on a server, then continue exactly like the server path. */
+async function solveLocally(frames, fileName, signal) {
+  tick(Date.now());
+  setStage(1, "running", "loading the camera solver (7 MB)");
+  hybridSummary("Stage 2: solving the camera path on your device", 0.3);
+  const label = { features: "finding features", matching: "matching frames", mapping: "solving camera poses" }, weight = { features: 0, matching: 0.4, mapping: 0.6 };
+  const payload = await solveInBrowser(frames, {
+    signal,
+    onProgress: (stage, done, total) => {
+      setStage(1, "running", `${label[stage] || stage}${total ? `, ${done} of ${total}` : ""}`);
+      hybridSummary("Stage 2: solving the camera path on your device", 0.3 + 0.2 * ((weight[stage] ?? 0) + (0.4 * (total ? done / total : 0))));
+    },
+  });
+  setStage(1, "done", `${payload.frames.length} of ${payload.frames_total} frames placed, on your device`);
+  await measureOnDevice(payload, frames, fileName, signal);
 }
 
 function showConsent(server) {
@@ -576,6 +606,7 @@ async function main() {
   else show("start");
   // Debug and test hook: read-only handles to the live objects.
   Object.defineProperties((window.__vid3d = {}), {
+    caps: { get: () => caps },
     mode: { get: () => mode }, view: { get: () => view }, meta: { get: () => meta },
   });
 }

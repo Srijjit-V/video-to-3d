@@ -25,6 +25,10 @@ TJS_VENDOR = ROOT / "viewer" / "vendor" / "transformers"
 TJS_FILES = ["ort-wasm-simd-threaded.asyncify.mjs"]  # bundled
 TJS_REMOTE = ["transformers.min.js", "ort-wasm-simd-threaded.asyncify.wasm"]  # loaded from jsDelivr at an exact version; hash recorded only
 TJS_HASHES = TJS_VENDOR / "HASHES.json"
+COLMAP_VENDOR = ROOT / "viewer" / "vendor" / "colmap-wasm"
+COLMAP_VERSION = "0.1.0"
+COLMAP_FILES = [f"dist/{n}" for n in ("colmap-files.js", "estimate.js", "index.js", "pairs.js", "protocol.js", "sift-matcher.js", "types.js", "worker.js")] + ["wasm/colmap.mjs", "wasm/colmap.wasm"]
+COLMAP_HASHES = COLMAP_VENDOR / "HASHES.json"
 TJS_VERSION = "4.3.2"
 ORT_VERSION = "1.31.0-dev.20260914-8d85527a0"
 ORT_WASM = "ort-wasm-simd-threaded.asyncify.wasm"  # loaded from a CDN at run time; its hash is recorded, not bundled
@@ -47,11 +51,16 @@ def tjs_current() -> dict[str, str]:
     return h
 
 
+def colmap_current() -> dict[str, str]:
+    return {f: sri(COLMAP_VENDOR / f) for f in COLMAP_FILES}
+
+
 def main(argv: list[str]) -> int:
     if "--update" in argv:
         HASHES.write_text(json.dumps(current(), indent=2) + "\n")
         TJS_HASHES.write_text(json.dumps(tjs_current(), indent=2) + "\n")
-        print("updated", HASHES, TJS_HASHES)
+        COLMAP_HASHES.write_text(json.dumps(colmap_current(), indent=2) + "\n")
+        print("updated", HASHES, TJS_HASHES, COLMAP_HASHES)
         return 0
     expected, actual = json.loads(HASHES.read_text()), current()
     bad = [f for f in FILES if expected.get(f) != actual[f]]
@@ -62,7 +71,19 @@ def main(argv: list[str]) -> int:
         if t_exp.get(f) != t_act[f]:
             print(f"MISMATCH transformers/{f}: expected {t_exp.get(f)}, got {t_act[f]}")
             bad.append(f)
+    c_exp, c_act = json.loads(COLMAP_HASHES.read_text()), colmap_current()
+    for f in COLMAP_FILES:
+        if c_exp.get(f) != c_act[f]:
+            print(f"MISMATCH colmap-wasm/{f}: expected {c_exp.get(f)}, got {c_act[f]}")
+            bad.append(f)
     if "--official" in argv:
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(["npm", "pack", f"colmap-wasm@{COLMAP_VERSION}", "--silent"], cwd=d, check=True, capture_output=True)
+            subprocess.run(["tar", "-xzf", f"colmap-wasm-{COLMAP_VERSION}.tgz"], cwd=d, check=True)
+            for f in COLMAP_FILES:
+                if sri(Path(d) / "package" / f) != c_act[f]:
+                    print(f"MISMATCH colmap-wasm/{f} differs from the official npm package")
+                    bad.append("official-colmap-" + f)
         with tempfile.TemporaryDirectory() as d:
             subprocess.run(["npm", "pack", "three@0.160.0", "--silent"], cwd=d, check=True, capture_output=True)
             subprocess.run(["tar", "-xzf", "three-0.160.0.tgz", "package/build/three.module.min.js"], cwd=d, check=True)
