@@ -8,8 +8,8 @@ Everything here was actually run; anything not run is under "Not verified".
 | Check | Command | Result |
 |---|---|---|
 | Python tests | `python -m pytest -q` | **199 passed, 20 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
-| Viewer logic | `node --test "tests/js/*.test.mjs"` | **53 passed** |
-| Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **17 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
+| Viewer logic | `node --test "tests/js/*.test.mjs"` | **56 passed** |
+| Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **19 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
 | Lint | `ruff check .` (pyflakes, pycodestyle, bugbear, pyupgrade, bandit rules, import order) | clean |
 | Types | `mypy` on `src/vid3d` | clean, 12 files |
 | Dependency audit | `pip-audit -r requirements/lock-py311.txt --no-deps --disable-pip` | no known vulnerabilities |
@@ -109,6 +109,8 @@ The Modal limits and prices below are from search results, not from reading Moda
 - **Measured** (real Chrome with WebGPU, synthetic room, true camera height given): **4.95 x 4.0 m**, area 19.8 m² (long side -1%, short side 0%), 90% range 17.9 to 22.1 m² (contains the true 20), 75 to 81 s end to end, 0 POST requests. Five runs gave the identical result **because colmap-wasm is seeded and deterministic for the same pictures, so that is one result, not five independent samples**. One room, one video, one machine: this says nothing about other rooms. The server path on the same video measured +2% to +11% on the long side (see above), so the two solvers differ by room and run and no ranking should be read from this.
 - **Gate from Phase 0**: colmap-wasm passed the 6% room-size gate on this one room with sequential pairing and failed it with its default all-pairs matching. It stays **experimental**, not the default, until it has passed on more rooms.
 - **Not verified**: other rooms or phones, Safari, devices without WebGPU (the option is disabled there; the disabled state is tested, the mode itself was not run), memory use on a phone (the wasm is 7 MB, the solver's peak memory was not measured).
+
+- **An intermittent failed `blob:` request** appeared once in a full browser run of the server end-to-end test (the scene and accuracy checks passed; the test also asserts there are no failed requests). My explanation: the AI library's blob URL was revoked right after import while the library could still fetch its own URL. The blob is now kept for the page's lifetime, and 3 of 3 runs passed afterwards. This is consistent with the explanation but not proof of it.
 
 ## WebKit evidence (2026-11-19)
 
