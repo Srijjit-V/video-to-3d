@@ -7,7 +7,7 @@ Everything here was actually run; anything not run is under "Not verified".
 
 | Check | Command | Result |
 |---|---|---|
-| Python tests | `python -m pytest -q` | **199 passed, 20 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
+| Python tests | `python -m pytest -q` | **201 passed, 22 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
 | Viewer logic | `node --test "tests/js/*.test.mjs"` | **56 passed** |
 | Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **19 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
 | Lint | `ruff check .` (pyflakes, pycodestyle, bugbear, pyupgrade, bandit rules, import order) | clean |
@@ -111,6 +111,8 @@ The Modal limits and prices below are from search results, not from reading Moda
 - **Not verified**: other rooms or phones, Safari, devices without WebGPU (the option is disabled there; the disabled state is tested, the mode itself was not run), memory use on a phone (the wasm is 7 MB, the solver's peak memory was not measured).
 
 - **An intermittent failed `blob:` request** appeared once in a full browser run of the server end-to-end test (the scene and accuracy checks passed; the test also asserts there are no failed requests). My explanation: the AI library's blob URL was revoked right after import while the library could still fetch its own URL. The blob is now kept for the page's lifetime, and 3 of 3 runs passed afterwards. This is consistent with the explanation but not proof of it.
+
+- **A bug only CI found**: the repo's `.gitignore` rule `dist/` silently excluded the 8 vendored colmap-wasm JavaScript files, so they existed on the developer machine but were never committed. The push passed locally and failed CI (the vendor-hash step and a Python test), and the deployed experimental mode would have been broken. Fixed with an explicit `!viewer/vendor/**/dist/` exception and two tests that need no browser: every file under `viewer/vendor` must be tracked and not ignored, and every relative import inside the vendored package must resolve. The browser-mode Chrome test cannot run on CI (the runner has no real GPU), which is why it did not catch this.
 
 ## WebKit evidence (2026-11-19)
 

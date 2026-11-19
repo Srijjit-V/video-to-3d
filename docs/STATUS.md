@@ -5,7 +5,7 @@ Updated 2026-11-18. Verified numbers live in [VERIFICATION.md](VERIFICATION.md);
 ## Health
 | Area | State |
 |---|---|
-| Python pipeline, CLI, local server | working; 199 tests pass |
+| Python pipeline, CLI, local server | working; 201 tests pass |
 | Browser measuring (TypeScript port, browser depth) | working end to end in Chrome with a camera-solve server; 56 Node tests, golden vectors match Python |
 | Viewer (demo, colours, export, themes) | working; 19 browser tests, 48 contrast checks across both themes |
 | CI | green on the last code commit (see VERIFICATION.md for the one unexplained earlier failure) |
