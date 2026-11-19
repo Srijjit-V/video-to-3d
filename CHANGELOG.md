@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+- Audit round 2: refuse a missing or negative `Content-Length`; check a JPEG's header size before decoding it; bound the client's reads; log unexpected server errors by type; add `Permissions-Policy`; pin GitHub Actions to commit SHAs.
+
 ### Added
+- Server Docker image builds (linux/amd64) with a `.dockerignore`; ran the synthetic room through it.
 - Browser measuring: TypeScript port of the post-pose pipeline (`ts/src` to `viewer/js/core`), AI depth in the browser (transformers.js, Depth Anything V2 Small q4f16, WebGPU or WASM), a worker for fusion/floor/scale/ranges, and wiring so a video dropped on the hosted page ends in a measured 3D scene (camera path from a server you run). Golden tests against Python, an analytic-room test, a Chrome end-to-end test.
 - Hosted page, Hybrid mode: drop a video, frames are picked on the device (`frames.js`, `hybrid.js`), a consent screen shows what would be sent, only small pictures go to a camera-solve server (`zip.js`), and the returned camera path is plotted. Stages show where they run. CSP allows local servers and `blob:` media.
 - Hybrid mode: `python -m vid3d.sfm_server` solves camera paths from resized frames; `vid3d process --sfm-server URL` uses it. Validated sfm payload (`sfm_payload.py`), `process(sfm_payload=...)`, Phase 0 browser measurements in `docs/VERIFICATION.md`.

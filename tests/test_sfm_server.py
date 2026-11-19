@@ -256,3 +256,120 @@ def test_client_reports_the_servers_plain_message_and_refuses_odd_urls(server, t
     for bad in ("file:///etc/passwd", "ftp://x", "javascript:alert(1)", ""):
         with pytest.raises(ValueError):
             solve_remote(d, bad, 70.0)
+
+
+# ---------- audit round 2 (docs/retro/hybrid-path): found by reading the server against the hostile-client lens ----------
+
+@pytest.mark.parametrize("length", ["-1", "0", "abc", "1e3", ""])
+def test_a_missing_negative_or_nonsense_content_length_is_refused_at_once(server, length):
+    """read(-1) would read until the client closes the connection: unbounded memory for a client that never stops sending."""
+    srv, _, tmp = server
+    c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+    c.putrequest("POST", "/v1/sfm")
+    c.putheader("Content-Type", "application/zip")
+    c.putheader("Content-Length", length)
+    c.endheaders()
+    r = c.getresponse()
+    assert r.status in (400, 411) and json.loads(r.read())["error"]
+    assert list(tmp.iterdir()) == []
+
+
+def crafted_jpeg(width, height):
+    """A tiny file whose JPEG header claims width x height: decoding it for real would allocate width*height*3 bytes."""
+    data = bytearray(jpeg(w=64, h=48))
+    i = data.index(b"\xff\xc0") + 5  # SOF0: marker(2) length(2) precision(1) then height(2) width(2)
+    data[i:i + 4] = height.to_bytes(2, "big") + width.to_bytes(2, "big")
+    return bytes(data)
+
+
+def test_a_jpeg_header_claiming_a_huge_size_is_refused_before_it_is_decoded(server, monkeypatch):
+    import vid3d.sfm_server as mod
+
+    def boom(*a, **k):
+        raise AssertionError("decoded a JPEG whose header claims 60000 x 60000 pixels")
+
+    monkeypatch.setattr(mod.cv2, "imdecode", boom)
+    srv, _, tmp = server
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        for i in range(3):
+            z.writestr(f"bomb{i}.jpg", crafted_jpeg(60000, 60000))
+    status, _, resp = post(srv, b.getvalue())
+    assert status == 400 and "too large" in json.loads(resp)["error"].lower()
+    assert list(tmp.iterdir()) == []
+
+
+def test_jpeg_dims_reads_the_header_and_rejects_garbage():
+    from vid3d.sfm_server import jpeg_dims
+
+    assert jpeg_dims(jpeg(w=320, h=240)) == (320, 240)
+    assert jpeg_dims(crafted_jpeg(1234, 567)) == (1234, 567)
+    for bad in (b"", b"not a jpeg", b"\xff\xd8", b"\xff\xd8\xff\xe0\x00\x02", b"\xff\xd8\xff\xc0\x00\x0b\x08"):
+        assert jpeg_dims(bad) is None
+
+
+def test_the_client_refuses_an_oversized_response(tmp_path):
+    import http.server
+
+    from vid3d.sfm_client import solve_remote
+
+    class Big(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            body = b"[" + b"1," * 3_000_000 + b"1]"  # 6 MB of JSON
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Big)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    d = tmp_path / "frames"
+    d.mkdir()
+    (d / "frame_0000.jpg").write_bytes(jpeg())
+    with pytest.raises(RuntimeError, match="too large"):
+        solve_remote(d, f"http://127.0.0.1:{srv.server_address[1]}", 70.0)
+    srv.shutdown()
+
+
+def test_an_unexpected_server_error_is_logged_by_type_only_and_not_leaked_to_the_client(tmp_path, capfd):
+    def broken(frames_dir, work, fov):
+        raise ValueError("secret detail about /private/room.jpg")
+
+    srv = make_server("127.0.0.1", 0, runner=broken, limits=Limits(min_interval_s=0.0), tmp_root=tmp_path)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    status, _, body = post(srv, make_zip(3))
+    srv.shutdown()
+    assert status == 500 and "secret" not in body.decode() and "ValueError" not in body.decode()
+    err = capfd.readouterr().err
+    assert "ValueError" in err and "secret" not in err and "private" not in err
+
+
+def test_the_client_turns_a_non_json_answer_into_a_plain_message(tmp_path):
+    import http.server
+
+    from vid3d.sfm_client import solve_remote
+
+    class Junk(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            body = b"<html>not a payload</html>"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Junk)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    d = tmp_path / "frames"
+    d.mkdir()
+    (d / "frame_0000.jpg").write_bytes(jpeg())
+    with pytest.raises(RuntimeError, match="not a camera payload|did not answer"):
+        solve_remote(d, f"http://127.0.0.1:{srv.server_address[1]}", 70.0)
+    srv.shutdown()

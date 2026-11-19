@@ -65,6 +65,39 @@ def default_runner(frames_dir: Path, work: Path, fov: float, timeout: float = 90
     return npz_to_payload(work / "sfm.npz", json.loads((work / "sfm_stats.json").read_text()))
 
 
+_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}  # start-of-frame markers
+
+
+def jpeg_dims(raw: bytes) -> tuple[int, int] | None:
+    """(width, height) read from a JPEG's own header without decoding it, or None if the header is not well formed.
+    Decoding allocates width x height x 3 bytes, so check the size first: a few KB can claim 60000 x 60000 pixels."""
+    if raw[:2] != b"\xff\xd8":
+        return None
+    i, n = 2, len(raw)
+    while i + 4 <= n:
+        if raw[i] != 0xFF:
+            return None
+        marker = raw[i + 1]
+        if marker == 0xFF:  # fill byte
+            i += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD8:  # markers without a length
+            i += 2
+            continue
+        if marker == 0xD9:
+            return None
+        seg = int.from_bytes(raw[i + 2:i + 4], "big")
+        if seg < 2:
+            return None
+        if marker in _SOF:
+            if i + 9 > n:
+                return None
+            h, w = int.from_bytes(raw[i + 5:i + 7], "big"), int.from_bytes(raw[i + 7:i + 9], "big")
+            return (w, h) if w and h else None
+        i += 2 + seg
+    return None
+
+
 class Refusal(Exception):
     def __init__(self, status: int, message: str, retry_after: int | None = None):
         super().__init__(message)
@@ -88,6 +121,11 @@ def read_frames(body: bytes, out: Path, lim: Limits) -> int:
     size = None
     for n, info in enumerate(infos):
         raw = z.open(info).read(lim.max_body + 1)
+        dims = jpeg_dims(raw)  # the header says how big it would be: check before decoding
+        if dims is None:
+            raise Refusal(400, "One of the files is not a readable JPEG.")
+        if max(dims) > lim.max_side:
+            raise Refusal(400, f"Frames are too large: {dims[0]} x {dims[1]}. Resize to {lim.max_side} px or less.")
         img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
         if img is None:
             raise Refusal(400, "One of the files is not a readable JPEG.")
@@ -162,7 +200,9 @@ def make_server(host: str, port: int, runner: Runner = default_runner, allowed_o
             except Refusal as e:
                 retry = {"Retry-After": str(e.retry_after)} if e.retry_after else None
                 self._send(e.status, {"error": e.message}, retry)
-            except Exception:  # noqa: BLE001 - never leak internals to a client
+            except Exception as e:  # noqa: BLE001 - never leak internals to a client
+                # log the exception type only: never file names or image content
+                sys.stderr.write(f"sfm-server: unexpected {type(e).__name__}\n")
                 self._send(500, {"error": "The server hit an unexpected problem. Try again later."})
 
         def _drain(self, length: int) -> None:
@@ -180,6 +220,8 @@ def make_server(host: str, port: int, runner: Runner = default_runner, allowed_o
                 length = int(self.headers.get("Content-Length", ""))
             except ValueError as e:
                 raise Refusal(411, "A Content-Length header is required.") from e
+            if length <= 0:  # read(-1) would read until the client stops sending
+                raise Refusal(411, "A positive Content-Length is required.")
             if length > lim.max_body:
                 self._drain(length)
                 raise Refusal(413, f"The upload is too large (limit {lim.max_body // 1_000_000} MB). "

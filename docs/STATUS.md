@@ -5,7 +5,7 @@ Updated 2026-11-18. Verified numbers live in [VERIFICATION.md](VERIFICATION.md);
 ## Health
 | Area | State |
 |---|---|
-| Python pipeline, CLI, local server | working; 185 tests pass |
+| Python pipeline, CLI, local server | working; 199 tests pass |
 | Browser measuring (TypeScript port, browser depth) | working end to end in Chrome with a camera-solve server; 53 Node tests, golden vectors match Python |
 | Viewer (demo, colours, export, themes) | working; 17 browser tests, 48 contrast checks across both themes |
 | CI | green on the last code commit (see VERIFICATION.md for the one unexplained earlier failure) |
@@ -13,12 +13,15 @@ Updated 2026-11-18. Verified numbers live in [VERIFICATION.md](VERIFICATION.md);
 
 ## Blocked or waiting on the owner
 - **Vercel deploy**: needs `npx vercel login` (the CLI is logged out here). GitHub Pages is live.
-- **Public camera-solve server**: none exists. Needs a Modal account and spend cap, Turnstile, a queue. Do not expose `vid3d.sfm_server` publicly before those ([ADR-0007](adr/0007-hosting-vercel-static-modal-cpu.md)).
+- **Public camera-solve server**: none exists (the Docker image builds and works, see VERIFICATION.md). Needs a Modal account and spend cap, Turnstile, a queue. Do not expose `vid3d.sfm_server` publicly before those ([ADR-0007](adr/0007-hosting-vercel-static-modal-cpu.md)).
 - **Front-end stack**: React/Vite/Tailwind is proposed, not decided ([ADR-0005](adr/0005-front-end-stack.md)).
 - **Real-phone benchmark**: needs footage and tape-measured rooms ([BENCHMARK.md](BENCHMARK.md)).
 
 ## Not built
-Docker image build (`deploy/Dockerfile.sfm` is untested), colmap-wasm mode in the page, Safari and phone-browser tests, HEVC video test, resume after a dropped connection, Mediabunny/WebCodecs decoding (frames come from a `<video>` element on the main thread).
+colmap-wasm mode in the page, Safari and phone-browser tests, HEVC video test, resume after a dropped connection, Mediabunny/WebCodecs decoding (frames come from a `<video>` element on the main thread).
+
+## Open audit rows
+See [retro/hybrid-path/gap-register.md](retro/hybrid-path/gap-register.md): G-009 proxy-aware rate limit, G-010 bot protection / spend cap / queue, G-011 frame picking off the main thread; G-013 (range vs solver variance) is wont-fix until real-room data exists.
 
 ## Delete zone (do not recreate without a new ADR)
 | Path or idea | Why removed | Replacement |

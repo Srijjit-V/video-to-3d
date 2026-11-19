@@ -7,7 +7,7 @@ Everything here was actually run; anything not run is under "Not verified".
 
 | Check | Command | Result |
 |---|---|---|
-| Python tests | `python -m pytest -q` | **185 passed, 20 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
+| Python tests | `python -m pytest -q` | **199 passed, 20 skipped** (the skipped ones are the opt-in browser and full-pipeline tests below) |
 | Viewer logic | `node --test "tests/js/*.test.mjs"` | **53 passed** |
 | Viewer in real Chrome (Playwright) | `VID3D_UI=1 python -m pytest -q tests/test_ui.py` | **17 passed, 1 skipped** (the skipped one drops a video and needs the full pipeline) |
 | Lint | `ruff check .` (pyflakes, pycodestyle, bugbear, pyupgrade, bandit rules, import order) | clean |
@@ -93,6 +93,14 @@ The Modal limits and prices below are from search results, not from reading Moda
 - **Whole chain, no model:** an analytic 4 x 5 x 2.6 m room rendered to depth, fake "AI" disparity with an unknown affine, and sparse points (`tests/js/helpers/synth.mjs`) comes out as exactly 4.0 x 5.0 m, area 20, rectangular, confidence high; with an assumed camera height the 90% area range contains 20 m². Hostile payloads (negative depths, NaN, wrong sizes) are refused or dropped (an automated review found the negative-depth gap; fixed with tests).
 - **Real Chrome, real everything:** the H.264 synthetic room, frame picking on the device, consent, the camera-solve server with real COLMAP, the ONNX depth model (`onnx-community/depth-anything-v2-small`, q4f16, pinned revision) on WebGPU at about 0.35 s per frame, the measuring in a worker, the scene opens. 6 runs: 4.1 x 5.1 (twice), 4.05 x 5.1, 4.1 x 5.15, 4.2 x 5.35 and 4.07 x 5.55 m against a true 4.0 x 5.0 m (long side +2%, +2%, +2%, +3%, +7%, +11%). The 90% range models scale and wall-detection error but not this run-to-run solver variation, so in the worst runs the true area can fall outside it. One of the runs also flagged the outline as "not a simple rectangle" (low wall support, so the area is called an upper bound and confidence came out medium) while the others did not: the verdict flags are sensitive to run-to-run differences too. The browser test therefore allows 12% and asserts neither the flag nor range coverage. The browser path reads about 2 to 3% high on average; I did not isolate whether that comes from the quantised model, JPEG re-encoding or the camera solver.
 - **Not verified:** the CPU (WASM) path end to end (about 6 s per frame measured earlier, so about 8 minutes for 80 frames; the test is skipped without WebGPU); Safari; phones; HEVC video; real rooms. transformers.js and the ONNX Runtime wasm (27 MB) load from jsDelivr at pinned versions; the page hash-checks both before running them (unit-tested, and exercised by the Chrome test) and CI compares the recorded hashes with the npm packages. The wasm comes from a `-dev` build of onnxruntime-web because transformers.js 4.3.2 depends on it.
+
+## Audit round 2, Docker image, diagrams (2026-11-18)
+
+- **Audit round 2** ([retro/hybrid-path](retro/hybrid-path/gap-register.md)): 7 confirmed problems fixed test first (negative `Content-Length`, JPEG header size checked before decoding, bounded client reads, logged server errors, `Permissions-Policy`, SHA-pinned Actions, buildable image). 29 server/client tests plus 4 header tests; each new test was seen failing before its fix.
+- **Docker image** (`deploy/Dockerfile.sfm`): built on 2026-11-18 (726 MB). `pycolmap` publishes no Linux arm64 wheel, so the image is pinned to `linux/amd64` (emulated on this Apple-silicon Mac). In the container: runs as UID 10001, `torch` is not loaded, `/v1/health` answers, and `vid3d process --sfm-server` solved the synthetic room through it: 60 of 60 frames, **4.05 x 5.0 m**, area range 18.0 to 22.2 m², confidence high, temp folder empty afterwards; 3 min 5 s emulated. Not verified: native x86-64 speed, memory use under load, a real deployment (Modal, Hugging Face, Fly).
+- **Mermaid**: all 6 diagrams (5 in ARCHITECTURE.md, 1 in the README) render with `@mermaid-js/mermaid-cli` 12.2.0 on this Mac. GitHub's own renderer was not checked.
+- **Browser suite and machine load**: in one full run (machine load average about 40 because of Docker Desktop and other apps) three hybrid tests timed out waiting for frame picking; run on their own the same three passed (4 min 32 s, including the end-to-end test under the new `Permissions-Policy`), so the browser count is 17 passed, 1 skipped. The hybrid tests are slow and load-sensitive.
+- **CI** is green on the latest commit for all four jobs (checked through the Actions API). Actions are pinned to commit SHAs.
 
 ## Not verified
 

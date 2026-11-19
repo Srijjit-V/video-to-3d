@@ -1,0 +1,7 @@
+# The server image needs only these files; everything else (venv, runs, samples, node_modules, tests, docs) stays out of the build context.
+*
+!deploy/requirements-sfm.txt
+!src/vid3d/__init__.py
+!src/vid3d/sfm.py
+!src/vid3d/sfm_payload.py
+!src/vid3d/sfm_server.py

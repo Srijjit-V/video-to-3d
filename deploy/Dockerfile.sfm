@@ -1,5 +1,7 @@
 # Camera-solve server for Hybrid mode: pycolmap + numpy + headless OpenCV. No torch, no model weights.
-FROM python:3.11-slim
+# pycolmap publishes no Linux arm64 wheel, and the hosts we target (Modal, Hugging Face Spaces, Fly) are x86-64, so the image is pinned to amd64.
+# On an Apple-silicon Mac Docker runs it emulated: slower, but the same binaries.
+FROM --platform=linux/amd64 python:3.11-slim
 RUN useradd --create-home --uid 10001 app
 WORKDIR /srv
 COPY deploy/requirements-sfm.txt .

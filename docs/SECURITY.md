@@ -29,7 +29,7 @@ A hosted camera-solve server must be added to `connect-src` before the deployed 
 
 ## Hybrid camera-solve server (`vid3d.sfm_server`)
 
-Separate from `vid3d serve`. It receives frames, so it is a boundary of its own: body cap checked from `Content-Length` before reading, at most 120 frames and 1280 px each, all the same size, every frame decoded and **re-encoded** (this drops EXIF and GPS), server-made file names, Origin allow-list for browsers, one job at a time, a per-client minimum interval, a 900 s solver timeout, a temp folder deleted in every case, no request logging, no stack traces to clients. The payload it returns is validated again by whoever receives it. **Not yet in place:** bot protection, a spend cap, TLS (put it behind a proxy that terminates TLS), and a hardened container image build.
+Separate from `vid3d serve`. It receives frames, so it is a boundary of its own: body cap checked from `Content-Length` before reading (a missing, zero or negative length is refused), the JPEG header's size read and checked before any frame is decoded, at most 120 frames and 1280 px each, all the same size, every frame decoded and **re-encoded** (this drops EXIF and GPS), server-made file names, Origin allow-list for browsers, one job at a time, a per-client minimum interval, a 900 s solver timeout, a temp folder deleted in every case, no request logging, no stack traces to clients. The payload it returns is validated again by whoever receives it, and the client reads at most 5 MB of any answer. Unexpected errors are logged by type only. **Not yet in place:** bot protection, a spend cap, TLS (put it behind a proxy that terminates TLS), and a hardened container image build.
 
 ## Trust boundaries
 

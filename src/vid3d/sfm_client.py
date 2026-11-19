@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 
 from .sfm_payload import validate
 
+# A payload for 80 frames is under 1 MB; never read an unbounded answer from a server we do not control.
+MAX_RESPONSE = 5_000_000
+
 
 def solve_remote(frames_dir: Path, server_url: str, fov: float, timeout: float = 1200.0) -> dict:
     u = urlparse(server_url)
@@ -26,10 +29,16 @@ def solve_remote(frames_dir: Path, server_url: str, fov: float, timeout: float =
         headers={"Content-Type": "application/zip"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
-            payload = json.loads(r.read())
+            raw = r.read(MAX_RESPONSE + 1)
+        if len(raw) > MAX_RESPONSE:
+            raise RuntimeError("The camera-solve server's answer is too large to be a camera payload: refused.")
+        try:
+            payload = json.loads(raw)
+        except ValueError as e:
+            raise RuntimeError("The server did not answer with a camera payload (the reply was not JSON).") from e
     except urllib.error.HTTPError as e:
         try:
-            msg = json.loads(e.read()).get("error", "")
+            msg = str(json.loads(e.read(100_000)).get("error", ""))[:300]  # bounded: this server is not trusted
         except (ValueError, OSError):
             msg = ""
         raise RuntimeError(msg or f"The camera-solve server answered {e.code}.") from e

@@ -124,6 +124,12 @@ The video is **untrusted input** (a file from a phone, possibly from someone els
 Healthy prototype with a correct core, but not safe to point at a stranger's video or to publish scenes from, until items 1 to 4 are fixed.
 Fix 1 to 4 first, then 6 to 8, then the correctness items 9 to 12.
 
+## Round 2: the hybrid path (2026-11-18)
+
+A second audit of the code added after this one (the camera-solve server and client, the browser flow, hosting config, CI, the Docker image), run with the ECC brownfield-retrospective method. Full baseline and gap register: [retro/hybrid-path/](retro/hybrid-path/gap-register.md).
+Confirmed and fixed, each with a test that failed first: a negative `Content-Length` that allowed an unbounded read (P1); a JPEG header claiming 60000 x 60000 px that was decoded before the size check (P1); an unbounded read of the answer from a server the client does not control (P2); an unexpected server error that was never logged (P2); a missing `Permissions-Policy` (P3); Actions pinned by movable tags (P3); and a server image that had never been built and could not be built for arm64 (P2).
+Left open on purpose: bot protection, a spend cap and a queue (need the owner's accounts), a proxy-aware rate limit (needs a host), frame picking off the main thread, and the 90% range not covering solver variance (needs real-room data).
+
 ## Not checked
 
 - Real phone footage (only a synthetic room has been measured), other operating systems, and GPU or CUDA paths.

@@ -10,7 +10,7 @@ Vercel functions cap request bodies at 4.5 MB and Hobby runs at most 300 s, so f
 
 ## Decision
 
-Vercel serves only the static site. Frames go straight from the browser to a CPU server (`python -m vid3d.sfm_server`, image in `deploy/`, never built). Modal is the first choice; a Hugging Face Docker Space and Fly are fallbacks. Guards still to build: Turnstile, a spend cap, a queue.
+Vercel serves only the static site. Frames go straight from the browser to a CPU server (`python -m vid3d.sfm_server`, image in `deploy/`, built and run on 2026-11-18, linux/amd64 only). Modal is the first choice; a Hugging Face Docker Space and Fly are fallbacks. Guards still to build: Turnstile, a spend cap, a queue.
 
 ## Alternatives Considered
 
