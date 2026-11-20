@@ -39,3 +39,4 @@ graphify-out/
 scripts/spike/_work/
 
 node_modules/
+.vercel

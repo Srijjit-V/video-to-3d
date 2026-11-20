@@ -12,7 +12,7 @@ Updated 2026-11-18. Verified numbers live in [VERIFICATION.md](VERIFICATION.md);
 | Accuracy | measured only on a synthetic room (browser path: 2 to 3% high on average, one run 7% high); **real phone video has not been tested** |
 
 ## Blocked or waiting on the owner
-- **Vercel deploy**: needs `npx vercel login` (the CLI is logged out here). GitHub Pages is live.
+- **Vercel deploy**: live at https://video-to-3d-pi.vercel.app (CLI deploy, public, CSP headers confirmed by curl). GitHub Pages is the backup.
 - **Public camera-solve server**: none exists (the Docker image builds and works, see VERIFICATION.md). Needs a Modal account and spend cap, Turnstile, a queue. Do not expose `vid3d.sfm_server` publicly before those ([ADR-0007](adr/0007-hosting-vercel-static-modal-cpu.md)).
 - **Front-end stack**: React/Vite/Tailwind is proposed, not decided ([ADR-0005](adr/0005-front-end-stack.md)).
 - **Real-phone benchmark**: needs footage and tape-measured rooms ([BENCHMARK.md](BENCHMARK.md)).

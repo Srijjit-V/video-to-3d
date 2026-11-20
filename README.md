@@ -17,7 +17,7 @@
 Free and open source. Runs on a laptop: no LiDAR, no cloud, no API keys.
 A phone video becomes a metric point cloud, a room size **with a 90% range and a confidence score**, a floor plan (download as SVG or JSON), the room's colours and a browser viewer.
 
-[Live viewer and demo](https://srijjit-v.github.io/video-to-3d/) · [Run it on your video](#run-it-on-your-video) · [Architecture](#architecture) · [Engineering](#engineering-highlights) · [Verification](#verification-and-limits)
+[Live viewer and demo (Vercel)](https://video-to-3d-pi.vercel.app) · [GitHub Pages backup](https://srijjit-v.github.io/video-to-3d/) · [Run it on your video](#run-it-on-your-video) · [Architecture](#architecture) · [Engineering](#engineering-highlights) · [Verification](#verification-and-limits)
 
 </div>
 
@@ -145,7 +145,7 @@ Measured on 2026-11-10 (details in [docs/VERIFICATION.md](docs/VERIFICATION.md))
 - One run per setting; the camera solver varies by a few percent between runs.
 
 **Not claimed:** accuracy on real phone video (not measured); that the 90% ranges are calibrated on real rooms; results for mirrors, glass, moving people or very dark rooms;
-non-rectangular rooms beyond flagging them; anything on Windows, Linux or CUDA; Vercel deployment (only GitHub Pages is live; the Vercel connector was refused, see Deploy).
+non-rectangular rooms beyond flagging them; anything on Windows, Linux or CUDA.
 
 ## Hybrid mode (camera path on a server)
 
@@ -160,7 +160,7 @@ The server needs pycolmap, numpy and headless OpenCV only (no torch). It re-enco
 **Browser flow (built and tested in Chrome on this computer):** drop a video on the page, open *Advanced options* and enter the server address (default `http://127.0.0.1:8787`; start the server with `--origin` set to the page's address). The page then picks frames, shows a consent screen, sends the pictures, runs AI depth and the measuring on your device (about 2.5 minutes in total for the 6-second synthetic room with a WebGPU laptop, most of it the server's COLMAP), and opens the 3D scene with ranges, confidence and floor-plan export.
 Over 6 runs on the synthetic 4.0 x 5.0 m room (true camera height given) the browser path measured the long side 2 to 3% high in four runs, 7% high in one and 11% high in one, and the short side 1 to 5% high. The camera solver varies from run to run, and the 90% range does not model that variation, so in the worst runs the true area can fall outside it.
 **Experimental: solve the camera path in your browser.** In *Advanced options* choose *Camera path: In this browser (experimental)*. It runs [colmap-wasm](https://github.com/obraia/colmap-wasm) (bundled, BSD-3) on your device: no server, nothing is sent, no consent screen. It is offered only when your browser reports WebGPU and enough memory, takes about 80 s on a WebGPU laptop for the synthetic room, and measured 4.95 x 4.0 m there (true 5.0 x 4.0 m). That is one room and the result is deterministic, so it proves little; with COLMAP's default all-pairs matching the same solver failed in the Phase 0 spike, which is why it is not the default.
-The server image (`deploy/Dockerfile.sfm`, linux/amd64) was built and ran the synthetic room end to end. The server image (`deploy/Dockerfile.sfm`, linux/amd64) was built and ran the synthetic room end to end. **Not yet built or tested:** any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, resume after a dropped connection, Safari and phone browsers, real phone video, and the in-browser camera solve is experimental (below). Do not expose the server publicly before those exist.
+The server image (`deploy/Dockerfile.sfm`, linux/amd64) was built and ran the synthetic room end to end. **Not yet built or tested:** any public deployment (Modal, Hugging Face Space, Fly), bot protection (Turnstile) and a spend cap, resume after a dropped connection, Safari and phone browsers, real phone video, and the in-browser camera solve is experimental (below). Do not expose the server publicly before those exist.
 
 ## Deploy the viewer
 
